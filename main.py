@@ -25,7 +25,7 @@ import statistics
 import pickle
 
 # WORKING DIRECTORY (should contain a data/ subdirectory)
-OUTPUT_FOLDER = "/scratch/aakash_ks.iitr/dr-scnn/1"
+OUTPUT_FOLDER = "/scratch/aakash_ks.iitr/dr-scnn"
 DATA_FOLDER = "/scratch/aakash_ks.iitr/data/diabetic-retinopathy/"
 TRAIN_DATA_FOLDER = DATA_FOLDER + 'resized_train/'
 
@@ -41,8 +41,8 @@ Load imaging data with annotations (from the output of the partition.py script)
 DEBUG = True
 
 if DEBUG:
-    training_table = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels.csv')).sample(frac=0.1).reset_index(drop=True)
-    validation_table = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels.csv')).drop(training_table.index).sample(frac=0.03).reset_index(drop=True)
+    training_table = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels.csv')).sample(frac=0.05).reset_index(drop=True)
+    validation_table = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels.csv')).drop(training_table.index).sample(frac=0.01).reset_index(drop=True)
 else:
     training_table = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels.csv')).sample(frac=0.8).reset_index(drop=True)
     validation_table = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels.csv')).drop(training_table.index).reset_index(drop=True)
@@ -53,9 +53,10 @@ image_dir = TRAIN_DATA_FOLDER
 # TRAINING DATA - INTER-patient image pairs BUT not limited to a single time point
 
 training_transforms = transforms.Compose([
+    transforms.Resize((224, 224)), # resize to 224x224
     transforms.RandomHorizontalFlip(p=0.5), # aim to train to be invariant to laterality of eye
     transforms.RandomRotation(10), # rotate +/- 5 degrees around center
-    transforms.RandomCrop(224), # pixel crop 
+    # transforms.RandomCrop(224), # pixel crop 
     transforms.ColorJitter(brightness = 0.03, contrast = 0.03), # brightness and color variation of +/- 5%
     transforms.ToTensor()
 ])
@@ -67,7 +68,7 @@ training_siamese_dataset = ROP_dataset_v5(patient_table = training_table,
                                         transform = training_transforms)
  
 training_dataloader = torch.utils.data.DataLoader(training_siamese_dataset, 
-                                                  batch_size=24, 
+                                                  batch_size=25, 
                                                   shuffle=False, 
                                                   num_workers=0)
 
@@ -85,7 +86,7 @@ validation_siamese_dataset = ROP_dataset_v5(patient_table = validation_table,
                                         transform = validation_transforms)
  
 validation_dataloader = torch.utils.data.DataLoader(validation_siamese_dataset, 
-                                                  batch_size=24, 
+                                                  batch_size=25, 
                                                   shuffle=False, 
                                                   num_workers=0)
 
@@ -118,7 +119,7 @@ def siamese_training(training_dataloader, validation_dataloader, output_folder_n
     optimizer = optim.Adam(net.parameters(),lr = learning_rate)
  
     # Initialization
-    num_epochs = 20
+    num_epochs = 5
     training_losses, validation_losses = [], []
     training_accuracies, validation_accuracies = [], []
     euclidean_distance_threshold = 1
