@@ -41,8 +41,8 @@ Load imaging data with annotations (from the output of the partition.py script)
 DEBUG = True
 
 if DEBUG:
-    training_table = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels.csv')).sample(frac=0.05).reset_index(drop=True)
-    validation_table = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels.csv')).drop(training_table.index).sample(frac=0.01).reset_index(drop=True)
+    training_table = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels.csv')).sample(frac=0.001).reset_index(drop=True)
+    validation_table = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels.csv')).drop(training_table.index).sample(frac=0.0002).reset_index(drop=True)
 else:
     training_table = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels.csv')).sample(frac=0.8).reset_index(drop=True)
     validation_table = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels.csv')).drop(training_table.index).reset_index(drop=True)
@@ -97,7 +97,7 @@ Early stopping with saving of model by validation loss based on https://towardsd
 
 '''
 
-def siamese_training(training_dataloader, validation_dataloader, output_folder_name, learning_rate = 0.000005):
+def siamese_training(training_dataloader, validation_dataloader, output_folder_name, learning_rate = 0.00005):
     '''
     - Implements siamese network training/validation with return of network weights and history of losses and accuracies
     - Implementation uses early stopping, saving the model with the best validation loss
@@ -163,7 +163,7 @@ def siamese_training(training_dataloader, validation_dataloader, output_folder_n
             img0, img1, label, meta = data
             img0 = np.repeat(img0, 3, 1) # repeat grayscale image in 3 channels (ResNet requires 3-channel input) 
             img1 = np.repeat(img1, 3, 1)
-            img0, img1, label = Variable(img0).cuda(), Variable(img1).cuda(), Variable(label).cuda()  # send tensors to the GPU
+            img0, img1, label = img0.to(device), img1.to(device), label.to(device)  # send tensors to the GPU
             optimizer.zero_grad() # clear gradients
             output0, output1 = net.forward(img0, img1)
             loss_contrastive = criterion(output0, output1, label.float())
@@ -201,7 +201,7 @@ def siamese_training(training_dataloader, validation_dataloader, output_folder_n
                     img0, img1, label, meta = data2
                     img0 = np.repeat(img0, 3, 1) # repeat grayscale image in 3 channels (ResNet requires 3-channel input) 
                     img1 = np.repeat(img1, 3, 1)
-                    img0, img1, label = Variable(img0).cuda(), Variable(img1).cuda(), Variable(label).cuda()
+                    img0, img1, label = img0.to(device), img1.to(device), label.to(device)
                     output1, output2 = net.forward(img0, img1)
                     loss_contrastive = criterion(output1, output2, label.float())
                     validation_loss += loss_contrastive.item()
