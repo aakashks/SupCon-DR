@@ -39,8 +39,8 @@ Load imaging data with annotations (from the output of the partition.py script)
 '''
  
 # annotations
-training_table = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels.csv')).sample(frac=0.8).reset_index(drop=True)
-validation_table = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels.csv')).drop(training_table.index).reset_index(drop=True)
+training_table = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels.csv')).sample(frac=0.1).reset_index(drop=True)
+validation_table = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels.csv')).drop(training_table.index).sample(frac=0.03).reset_index(drop=True)
 
 
 # processed image directory
