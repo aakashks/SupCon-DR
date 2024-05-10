@@ -38,10 +38,14 @@ device = torch.device('cuda')
 Load imaging data with annotations (from the output of the partition.py script)
 '''
  
-# annotations
-training_table = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels.csv')).sample(frac=0.1).reset_index(drop=True)
-validation_table = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels.csv')).drop(training_table.index).sample(frac=0.03).reset_index(drop=True)
+DEBUG = True
 
+if DEBUG:
+    training_table = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels.csv')).sample(frac=0.1).reset_index(drop=True)
+    validation_table = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels.csv')).drop(training_table.index).sample(frac=0.03).reset_index(drop=True)
+else:
+    training_table = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels.csv')).sample(frac=0.8).reset_index(drop=True)
+    validation_table = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels.csv')).drop(training_table.index).reset_index(drop=True)
 
 # processed image directory
 image_dir = TRAIN_DATA_FOLDER
@@ -114,7 +118,7 @@ def siamese_training(training_dataloader, validation_dataloader, output_folder_n
     optimizer = optim.Adam(net.parameters(),lr = learning_rate)
  
     # Initialization
-    num_epochs = 1000
+    num_epochs = 20
     training_losses, validation_losses = [], []
     training_accuracies, validation_accuracies = [], []
     euclidean_distance_threshold = 1
