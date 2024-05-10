@@ -69,23 +69,23 @@ training_dataloader = torch.utils.data.DataLoader(training_siamese_dataset,
                                                   shuffle=False, 
                                                   num_workers=0)
 
-# # VALIDATION DATA - INTER-patient image pairs BUT not limited to a single time point
+# VALIDATION DATA - INTER-patient image pairs BUT not limited to a single time point
 
-# validation_transforms = transforms.Compose([
-#     transforms.CenterCrop(224), # pixel crop 
-#     transforms.ToTensor()
-# ])
+validation_transforms = transforms.Compose([
+    transforms.CenterCrop(224), # pixel crop 
+    transforms.ToTensor()
+])
 
-# # note dataset v5 for inter-patient 50:50 comparisons
-# validation_siamese_dataset = ROP_dataset_v5(patient_table = validation_table, 
-#                                         image_dir = image_dir, 
-#                                         epoch_size = 1600,
-#                                         transform = validation_transforms)
+# note dataset v5 for inter-patient 50:50 comparisons
+validation_siamese_dataset = ROP_dataset_v5(patient_table = validation_table, 
+                                        image_dir = image_dir, 
+                                        epoch_size = 1600,
+                                        transform = validation_transforms)
  
-# validation_dataloader = torch.utils.data.DataLoader(validation_siamese_dataset, 
-#                                                   batch_size=16, 
-#                                                   shuffle=False, 
-#                                                   num_workers=0)
+validation_dataloader = torch.utils.data.DataLoader(validation_siamese_dataset, 
+                                                  batch_size=16, 
+                                                  shuffle=False, 
+                                                  num_workers=0)
 
 '''
 Training the siamese network 
