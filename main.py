@@ -32,11 +32,7 @@ TRAIN_DATA_FOLDER = DATA_FOLDER + 'resized_train/'
 # custom classes
 from siamese_classes import ROP_dataset_v5, SiameseNetwork101, ContrastiveLoss
 
-# CUDA for PyTorch
-os.environ['CUDA_VISIBLE_DEVICES']='0' # pick GPU to use
-use_cuda = torch.cuda.is_available()
-device = torch.device("cuda:0" if use_cuda else "cpu")
-
+device = torch.device('cuda')
 
 '''
 Load imaging data with annotations (from the output of the partition.py script)
