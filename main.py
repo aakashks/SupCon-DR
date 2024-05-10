@@ -67,7 +67,7 @@ training_siamese_dataset = ROP_dataset_v5(patient_table = training_table,
                                         transform = training_transforms)
  
 training_dataloader = torch.utils.data.DataLoader(training_siamese_dataset, 
-                                                  batch_size=16, 
+                                                  batch_size=24, 
                                                   shuffle=False, 
                                                   num_workers=0)
 
@@ -85,7 +85,7 @@ validation_siamese_dataset = ROP_dataset_v5(patient_table = validation_table,
                                         transform = validation_transforms)
  
 validation_dataloader = torch.utils.data.DataLoader(validation_siamese_dataset, 
-                                                  batch_size=16, 
+                                                  batch_size=24, 
                                                   shuffle=False, 
                                                   num_workers=0)
 
