@@ -44,7 +44,7 @@ class CFG:
     # weights =  torch.tensor([0.206119, 0.793881],dtype=torch.float32)
 
     clip_val = 1000.
-    batch_size = 128
+    batch_size = 64
     # gradient_accumulation_steps = 1
 
     lr = 6e-3
@@ -495,14 +495,14 @@ from hyperopt import hp
 
 space = {
     'lr': hp.loguniform('lr', np.log(1e-5), np.log(1e-2)),
-    'frozen_layers': hp.choice('frozen_layers', [1, 2, 3, 4]),
-    'epochs': hp.choice('epochs', [10, 20, 40]),
+    'frozen_layers': hp.choice('frozen_layers', [1, 2, 3]),
+    'epochs': hp.choice('epochs', [10, 20]),
 }
 
 from hyperopt import fmin, tpe, Trials
 
 tpe_trials = Trials()
-best = fmin(fn=objective_function, space=space, algo=tpe.suggest, max_evals=50, trials=tpe_trials)
+best = fmin(fn=objective_function, space=space, algo=tpe.suggest, max_evals=20, trials=tpe_trials)
 
 print(best)
 

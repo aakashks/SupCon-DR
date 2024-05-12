@@ -1,9 +1,23 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# # Load Data
+
+# In[ ]:
+
+
 OUTPUT_FOLDER = "/scratch/aakash_ks.iitr/dr-scnn/"
 DATA_FOLDER = "/scratch/aakash_ks.iitr/data/diabetic-retinopathy/"
 # TRAIN_DATA_FOLDER = DATA_FOLDER + 'resized_train/'
 TRAIN_DATA_FOLDER = DATA_FOLDER + 'resized_train_c/'
 
 # TEST_DATA_FOLDER = DATA_FOLDER + 'test/'
+
+
+# # Imports
+
+# In[ ]:
+
 
 import os
 import random
@@ -17,6 +31,10 @@ from PIL import Image
 
 plt.rcParams['figure.dpi'] = 200
 
+
+# In[ ]:
+
+
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
@@ -27,11 +45,14 @@ from torchvision.transforms import v2
 import timm
 
 
+# In[ ]:
+
+
 NUM_CLASSES = 5
 
 class CFG:
     seed = 42
-    N_folds = 5
+    N_folds = -1
     train_folds = [0, 1] # [0,1,2,3,4]
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -39,20 +60,24 @@ class CFG:
     workers = 16
 
     model_name = "resnet50.a1_in1k"
-    epochs = 50
+    epochs = 30
     cropped = True
     # weights =  torch.tensor([0.206119, 0.793881],dtype=torch.float32)
 
     clip_val = 1000.
-    batch_size = 64
+    batch_size = 128
     # gradient_accumulation_steps = 1
 
-    lr = 6e-3
+    lr = 5e-3
     weight_decay=1e-2
     
     resolution = 224
-    samples_per_class = 1000
-    frozen_layers = 4
+    samples_per_class = 8000
+    frozen_layers = 0
+
+
+# In[ ]:
+
 
 import wandb
 # from kaggle_secrets import UserSecretsClient
@@ -66,22 +91,50 @@ run = wandb.init(
     k:v for k, v in CFG.__dict__.items() if not k.startswith('__')}
 )
 
+
+# In[ ]:
+
+
 device = torch.device(CFG.device)
+
+
+# # Load train data
+
+# In[149]:
+
 
 # train_data = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels.csv'))
 train_data = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels_cropped.csv')).sample(frac=1).reset_index(drop=True)
 train_data
+
+
+# In[150]:
+
 
 # remove all images from the csv if they are not in the folder
 lst = map(lambda x: x[:-5], os.listdir(TRAIN_DATA_FOLDER))
 train_data = train_data[train_data.image.isin(lst)]
 len(train_data)
 
+
+# In[151]:
+
+
 train_data.level.value_counts()
+
+
+# In[ ]:
+
 
 # take only 100 samples from each class
 train_data = train_data.groupby('level').head(CFG.samples_per_class).reset_index(drop=True)
 train_data.level.value_counts()
+
+
+# # Dataset
+
+# In[ ]:
+
 
 from torchvision.transforms import functional as func
 
@@ -110,6 +163,10 @@ class CustomTransform:
 
         return img_resized
 
+
+# In[ ]:
+
+
 # train_transforms = CustomTransform()
 
 train_transforms = v2.Compose([
@@ -126,6 +183,10 @@ val_transforms = v2.Compose([
     CustomTransform(),
     v2.ToDtype(torch.float32, scale=False),
 ])
+
+
+# In[ ]:
+
 
 class ImageTrainDataset(Dataset):
     def __init__(
@@ -149,14 +210,28 @@ class ImageTrainDataset(Dataset):
 
         return image, torch.tensor(label, dtype=torch.long)
 
+
+# In[ ]:
+
+
 # visualize the transformations
 train_dataset = ImageTrainDataset(TRAIN_DATA_FOLDER, train_data, train_transforms)
 image, label = train_dataset[15]
 transformed_img_pil = func.to_pil_image(image)
 plt.imshow(transformed_img_pil)
 
+
+# # Metric
+
+# In[ ]:
+
+
 from sklearn.metrics import f1_score as sklearn_f1
 from sklearn.metrics import confusion_matrix, roc_auc_score, accuracy_score, precision_score
+
+
+# In[ ]:
+
 
 # def find_best_threshold(targets, predictions):
 #     score_5 = sklearn_f1(targets, predictions > 0.5)
@@ -173,6 +248,12 @@ from sklearn.metrics import confusion_matrix, roc_auc_score, accuracy_score, pre
 #     print(f"tp: {tp}, tn: {tn}, fp: {fp}, fn: {fn}")
 #     return score_5, best_score, best_th
 
+
+# # Train and evaluate functions
+
+# In[ ]:
+
+
 class style:
     BLUE = '\033[94m'
     GREEN = '\033[92m'
@@ -180,12 +261,20 @@ class style:
     END = '\033[0m'
     BOLD = '\033[1m'
 
+
+# In[ ]:
+
+
 def seed_everything(seed=42):
     random.seed(seed)
     os.environ['PYTHONHASHSEED'] = str(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
+
+
+# In[ ]:
+
 
 def evaluate_model(cfg, model, data_loader, loss_criterion, epoch=-1):
     # loss_fn = nn.CrossEntropyLoss(weight=cfg.weights.to(device), label_smoothing=0.1)
@@ -235,6 +324,10 @@ def evaluate_model(cfg, model, data_loader, loss_criterion, epoch=-1):
 
     print(f'Epoch {epoch}: validation loss = {val_loss:.4f} auc = {roc_auc:.4f} accuracy = {accuracy:.4f} precision = {precision:.4f}')
     return val_loss, roc_auc, accuracy, precision
+
+
+# In[ ]:
+
 
 def train_epoch(cfg, model, train_loader, loss_criterion, optimizer, scheduler, epoch):
     # scaler = torch.cuda.amp.GradScaler(enabled=cfg.apex)
@@ -300,26 +393,32 @@ def train_epoch(cfg, model, train_loader, loss_criterion, optimizer, scheduler, 
     print(f'Epoch {epoch}: training loss = {train_loss:.4f} auc = {roc_auc:.4f} accuracy = {accuracy:.4f} precision = {precision:.4f}')
     return train_loss, learning_rate_history, roc_auc, accuracy, precision
 
+
+# # Train model
+
+# ## Split data
+# 
+# The distribution of classes in the training data is not balance so using StratifiedKFold will ensure that the distrubution of positive and negative samples in all folds will match the original distributions.
+
+# In[ ]:
+
+
 plt.figure(figsize=(4,2))
 sns.histplot(train_data["level"])
 
-from sklearn.model_selection import StratifiedKFold
 
-sgkf = StratifiedKFold(n_splits=CFG.N_folds, random_state=CFG.seed, shuffle=True)
-for i, (train_index, test_index) in enumerate(sgkf.split(train_data["image"].values, train_data["level"].values)):
-    train_data.loc[test_index, "fold"] = i
+# In[ ]:
 
-def freeze_initial_layers(model, freeze_up_to_layer=3):
-    # The ResNet50 features block is typically named 'layerX' in PyTorch
-    layer_names = ['conv1', 'bn1', 'layer1', 'layer2', 'layer3', 'layer4']
-    # Iterate over model children (first level only, adjust as needed)
-    for name, child in model.named_children():
-        if name in layer_names[:freeze_up_to_layer]:
-            for param in child.parameters():
-                param.requires_grad = False
-            print(f'Layer {name} has been frozen.')
-        else:
-            print(f'Layer {name} is trainable.')
+
+# from sklearn.model_selection import StratifiedKFold
+
+# sgkf = StratifiedKFold(n_splits=CFG.N_folds, random_state=CFG.seed, shuffle=True)
+# for i, (train_index, test_index) in enumerate(sgkf.split(train_data["image"].values, train_data["level"].values)):
+#     train_data.loc[test_index, "fold"] = i
+
+
+# In[ ]:
+
 
 def create_model():
     model = timm.create_model(CFG.model_name, num_classes=NUM_CLASSES, pretrained=True)
@@ -329,8 +428,12 @@ def create_model():
 #     model.conv1 = nn.Conv2d(20, 64, 7, 2, 3, bias=False)
 #     model.conv1.weight = nn.Parameter(wd)
 #     model.fc = nn.Linear(in_features=2048, out_features=2, bias=True)
-    freeze_initial_layers(model, freeze_up_to_layer=CFG.frozen_layers)
+    # freeze_initial_layers(model, freeze_up_to_layer=CFG.frozen_layers)
     return model.to(device)
+
+
+# In[ ]:
+
 
 from sklearn.manifold import TSNE
 import matplotlib.colors as mcolors
@@ -391,121 +494,78 @@ def plot_tsne(embeddings, labels):
     plt.savefig(os.path.join(wandb.run.dir, f"tsne.png"), dpi=300, bbox_inches='tight')
 
 
-def train_model():
-    for FOLD in CFG.train_folds:
-        seed_everything(CFG.seed)
+# ## Train folds
 
-        # PREPARE DATA
-        fold_train_data = train_data[train_data["fold"] != FOLD].reset_index(drop=True)
-        fold_valid_data = train_data[train_data["fold"] == FOLD].reset_index(drop=True)
+# In[ ]:
 
-        train_dataset = ImageTrainDataset(TRAIN_DATA_FOLDER, fold_train_data, transforms=train_transforms)
-        valid_dataset = ImageTrainDataset(TRAIN_DATA_FOLDER, fold_valid_data, transforms=val_transforms)
 
-        train_loader = DataLoader(
-                train_dataset,
-                batch_size=CFG.batch_size,
-                shuffle=True,
-                num_workers=CFG.workers,
-                pin_memory=True,
-                drop_last=True
-            )
+seed_everything(CFG.seed)
 
-        valid_loader = DataLoader(
-            valid_dataset,
-            batch_size=CFG.batch_size,
-            shuffle=False,
-            num_workers=CFG.workers,
-            pin_memory=True,
-            drop_last=False,
-        )
+# PREPARE DATA
 
-        # PREPARE MODEL, OPTIMIZER AND SCHEDULER
-        model = create_model()
-        print(f"Model parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad):_}")
 
-        optimizer = torch.optim.AdamW(model.parameters(), lr=CFG.lr, weight_decay=CFG.weight_decay)
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer, eta_min=1e-6, T_max =CFG.epochs * len(train_loader),
-            )
-        
-        loss_criterion = nn.CrossEntropyLoss()
+train_dataset = ImageTrainDataset(TRAIN_DATA_FOLDER, train_data, transforms=train_transforms)
 
-        # TRAIN FOLD
-        best_score = 0
-        
-        wandb.run.tags = [f"fold_{FOLD}"]
-        
-        for epoch in range(0, CFG.epochs):
-            train_loss, train_lr, train_auc, train_accuracy, train_precision = train_epoch(CFG, model, train_loader, loss_criterion, optimizer, scheduler, epoch)
+train_loader = DataLoader(
+        train_dataset,
+        batch_size=CFG.batch_size,
+        shuffle=True,
+        num_workers=CFG.workers,
+        pin_memory=True,
+        drop_last=True
+    )
 
-            val_loss, val_auc, val_accuracy, val_precision = evaluate_model(CFG, model, valid_loader, loss_criterion, epoch)
-            
-            # Log metrics to wandb
-            wandb.log({
-                'train_loss': train_loss,
-                'train_auc': train_auc,
-                'train_accuracy': train_accuracy,
-                'train_precision': train_precision,
-                'val_loss': val_loss,
-                'val_auc': val_auc,
-                'val_accuracy': val_accuracy,
-                'val_precision': val_precision,
-                'learning_rate': train_lr[-1]  # Log the last learning rate of the epoch
-            })
+# PREPARE MODEL, OPTIMIZER AND SCHEDULER
+model = create_model()
+print(f"Model parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad):_}")
 
-            if (val_accuracy > best_score):
-                print(f"{style.GREEN}New best score: {best_score:.4f} -> {val_accuracy:.4f}{style.END}")
-                best_score = val_accuracy
-                torch.save(model.state_dict(), os.path.join(wandb.run.dir, f'best_model_fold_{FOLD}.pth'))
-                
+optimizer = torch.optim.AdamW(model.parameters(), lr=CFG.lr, weight_decay=CFG.weight_decay)
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+    optimizer, eta_min=1e-6, T_max =CFG.epochs * len(train_loader),
+    )
 
-        # plot a tsne plot of all the images using embeddings from the model
-        full_dataset = ImageTrainDataset(TRAIN_DATA_FOLDER, train_data, transforms=val_transforms)
-        loader = DataLoader(
-            full_dataset,
-            batch_size=CFG.batch_size,
-            shuffle=False,
-            num_workers=CFG.workers,
-            pin_memory=True,
-            drop_last=False,
-        )
-        
-        features, targets = get_embeddings(model, loader)
-        plot_tsne(features, targets)
-        
-        return best_score
+loss_criterion = nn.CrossEntropyLoss()
 
-# use bayesian optimization to find the best hyperparameters
 
-from hyperopt import STATUS_OK
-
-def objective_function(params):
-    with wandb.init(project="aml", config=params, reinit=True, job_type="hyperopt", dir=OUTPUT_FOLDER) as run:
-        print(params)
-        CFG.lr = params['lr']
-        CFG.frozen_layers = params['frozen_layers']
-        CFG.epochs = params['epochs']
-
-        best_val_acc = train_model()
+for epoch in range(0, CFG.epochs):
+    train_loss, train_lr, train_auc, train_accuracy, train_precision = train_epoch(CFG, model, train_loader, loss_criterion, optimizer, scheduler, epoch)
     
-        return {'loss': -best_val_acc, 'status': STATUS_OK} 
+    # Log metrics to wandb
+    wandb.log({
+        'train_loss': train_loss,
+        'train_auc': train_auc,
+        'train_accuracy': train_accuracy,
+        'train_precision': train_precision,
+        'learning_rate': train_lr[-1]  # Log the last learning rate of the epoch
+    })
 
-from hyperopt import hp
 
-space = {
-    'lr': hp.loguniform('lr', np.log(1e-5), np.log(1e-2)),
-    'frozen_layers': hp.choice('frozen_layers', [0, 1, 2]),
-    'epochs': hp.choice('epochs', [10, 20]),
-}
+torch.save(model.state_dict(), os.path.join(wandb.run.dir, f'final_model.pth'))
+        
 
-from hyperopt import fmin, tpe, Trials
+# plot a tsne plot of all the images using embeddings from the model
+full_dataset = ImageTrainDataset(TRAIN_DATA_FOLDER, train_data, transforms=val_transforms)
+loader = DataLoader(
+    full_dataset,
+    batch_size=CFG.batch_size,
+    shuffle=False,
+    num_workers=CFG.workers,
+    pin_memory=True,
+    drop_last=False,
+)
 
-tpe_trials = Trials()
-best = fmin(fn=objective_function, space=space, algo=tpe.suggest, max_evals=20, trials=tpe_trials)
+features, targets = get_embeddings(model, loader)
+plot_tsne(features, targets)
 
-print(best)
+
+# In[ ]:
+
 
 wandb.finish()
+
+
+# In[ ]:
+
+
 
 
