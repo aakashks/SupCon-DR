@@ -38,19 +38,21 @@ class CFG:
     workers = 16
 
     model_name = "resnet50.a1_in1k"
-    epochs = 10
+    epochs = 20
     cropped = True
     # weights =  torch.tensor([0.206119, 0.793881],dtype=torch.float32)
 
     clip_val = 1000.
-    batch_size = 64
+    batch_size = 50
     # gradient_accumulation_steps = 1
 
-    lr = 1e-3
+    lr = 1e-2
     weight_decay=1e-2
     
     resolution = 224
-    samples_per_class = 200
+    samples_per_class = 250
+    
+    cl_margin = 2.0
 
 import wandb
 # from kaggle_secrets import UserSecretsClient
@@ -156,7 +158,7 @@ class ImageTrainDataset(Dataset):
 from sklearn.metrics import f1_score as sklearn_f1
 from sklearn.metrics import confusion_matrix, roc_auc_score, accuracy_score, precision_score
 
-def contrastive_loss(embeddings, labels, margin=1.0):
+def contrastive_loss(embeddings, labels, margin=CFG.cl_margin):
     distance_matrix = torch.cdist(embeddings, embeddings, p=2)  # Compute pairwise Euclidean distances
     matches = labels.unsqueeze(0) == labels.unsqueeze(1)  # Matrix where True indicates matching labels
     non_matches = ~matches
@@ -338,7 +340,7 @@ def plot_tsne(embeddings, labels):
     plt.xlabel('t-SNE Axis 1')
     plt.ylabel('t-SNE Axis 2')
     plt.show()
-    plt.savefig(os.path.join(wandb.run.dir, f"tsne.png"))
+    plt.savefig(os.path.join(wandb.run.dir, f"tsne.png"), bbox_inches='tight')
 
 
 for FOLD in CFG.train_folds:
