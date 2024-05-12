@@ -52,15 +52,15 @@ NUM_CLASSES = 5
 
 class CFG:
     seed = 42
-    N_folds = 5
-    train_folds = [0] # [0,1,2,3,4]
+    N_folds = 6
+    train_folds = [0, ] # [0,1,2,3,4]
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     apex=True # use half precision
     workers = 16
 
     model_name = "resnet50.a1_in1k"
-    epochs = 50
+    epochs = 20
     cropped = True
     # weights =  torch.tensor([0.206119, 0.793881],dtype=torch.float32)
 
@@ -68,11 +68,12 @@ class CFG:
     batch_size = 64
     # gradient_accumulation_steps = 1
 
-    lr = 6e-3
+    lr = 5e-3
     weight_decay=1e-2
     
     resolution = 224
-    samples_per_class = 1000
+    samples_per_class = 2000
+    frozen_layers = 1
 
 
 # In[ ]:
@@ -163,18 +164,18 @@ class CustomTransform:
         return img_resized
 
 
-# In[ ]:
+# In[359]:
 
 
 # train_transforms = CustomTransform()
 
 train_transforms = v2.Compose([
+    v2.GaussianBlur(kernel_size=(5, 5), sigma=(0.1, 2)),  # Gaussian blur with random kernel size and sigma
+    v2.RandomRotation(degrees=(0, 90)),  # Random rotation between 0 and 360 degrees
     CustomTransform(),
     # v2.RandomResizedCrop(CFG.resolution, scale=(0.8, 1.0)),  # Krizhevsky style random cropping
     v2.RandomHorizontalFlip(),  # Random horizontal flip
     v2.RandomVerticalFlip(),  # Random vertical flip
-    v2.GaussianBlur(kernel_size=(5, 5), sigma=(0.1, 2)),  # Gaussian blur with random kernel size and sigma
-    v2.RandomRotation(degrees=(0, 90)),  # Random rotation between 0 and 360 degrees
     v2.ToDtype(torch.float32, scale=False),
 ])
 
@@ -184,7 +185,7 @@ val_transforms = v2.Compose([
 ])
 
 
-# In[ ]:
+# In[360]:
 
 
 class ImageTrainDataset(Dataset):
@@ -210,12 +211,12 @@ class ImageTrainDataset(Dataset):
         return image, torch.tensor(label, dtype=torch.long)
 
 
-# In[ ]:
+# In[367]:
 
 
 # visualize the transformations
 train_dataset = ImageTrainDataset(TRAIN_DATA_FOLDER, train_data, train_transforms)
-image, label = train_dataset[15]
+image, label = train_dataset[11]
 transformed_img_pil = func.to_pil_image(image)
 plt.imshow(transformed_img_pil)
 
@@ -419,6 +420,22 @@ for i, (train_index, test_index) in enumerate(sgkf.split(train_data["image"].val
 # In[ ]:
 
 
+def freeze_initial_layers(model, freeze_up_to_layer=3):
+    # The ResNet50 features block is typically named 'layerX' in PyTorch
+    layer_names = ['conv1', 'bn1', 'layer1', 'layer2', 'layer3', 'layer4']
+    # Iterate over model children (first level only, adjust as needed)
+    for name, child in model.named_children():
+        if name in layer_names[:freeze_up_to_layer]:
+            for param in child.parameters():
+                param.requires_grad = False
+            print(f'Layer {name} has been frozen.')
+        else:
+            print(f'Layer {name} is trainable.')
+
+
+# In[ ]:
+
+
 def create_model():
     model = timm.create_model(CFG.model_name, num_classes=NUM_CLASSES, pretrained=True)
 
@@ -427,7 +444,7 @@ def create_model():
 #     model.conv1 = nn.Conv2d(20, 64, 7, 2, 3, bias=False)
 #     model.conv1.weight = nn.Parameter(wd)
 #     model.fc = nn.Linear(in_features=2048, out_features=2, bias=True)
-
+    freeze_initial_layers(model, freeze_up_to_layer=CFG.frozen_layers)
     return model.to(device)
 
 
@@ -585,10 +602,4 @@ for FOLD in CFG.train_folds:
 
 
 wandb.finish()
-
-
-# In[ ]:
-
-
-
 

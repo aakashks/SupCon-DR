@@ -72,7 +72,7 @@ class CFG:
     weight_decay=1e-2
     
     resolution = 224
-    samples_per_class = 15000
+    samples_per_class = 10000
     frozen_layers = 0
 
 
