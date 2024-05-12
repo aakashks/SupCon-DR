@@ -170,12 +170,12 @@ class CustomTransform:
 # train_transforms = CustomTransform()
 
 train_transforms = v2.Compose([
+    v2.GaussianBlur(kernel_size=(5, 5), sigma=(0.1, 2)),  # Gaussian blur with random kernel size and sigma
+    v2.RandomRotation(degrees=(0, 90)),  # Random rotation between 0 and 360 degrees
     CustomTransform(),
     # v2.RandomResizedCrop(CFG.resolution, scale=(0.8, 1.0)),  # Krizhevsky style random cropping
     v2.RandomHorizontalFlip(),  # Random horizontal flip
     v2.RandomVerticalFlip(),  # Random vertical flip
-    v2.GaussianBlur(kernel_size=(5, 5), sigma=(0.1, 2)),  # Gaussian blur with random kernel size and sigma
-    v2.RandomRotation(degrees=(0, 90)),  # Random rotation between 0 and 360 degrees
     v2.ToDtype(torch.float32, scale=False),
 ])
 
@@ -540,7 +540,7 @@ for epoch in range(0, CFG.epochs):
     })
 
 
-torch.save(model.state_dict(), os.path.join(wandb.run.dir, f'final_model.pth'))
+    torch.save(model.state_dict(), os.path.join(wandb.run.dir, f'final_model.pth'))
         
 
 # plot a tsne plot of all the images using embeddings from the model
