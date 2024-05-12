@@ -60,7 +60,7 @@ class CFG:
     workers = 16
 
     model_name = "resnet50.a1_in1k"
-    epochs = 10
+    epochs = 50
     cropped = True
     # weights =  torch.tensor([0.206119, 0.793881],dtype=torch.float32)
 
@@ -68,11 +68,11 @@ class CFG:
     batch_size = 64
     # gradient_accumulation_steps = 1
 
-    lr = 5e-3
+    lr = 8e-3
     weight_decay=1e-2
     
     resolution = 224
-    samples_per_class = 250
+    samples_per_class = 1000
 
 
 # In[ ]:
@@ -311,7 +311,10 @@ def evaluate_model(cfg, model, data_loader, loss_criterion, epoch=-1):
     # For multi-class classification, you might need the class with the highest probability
     predicted_classes = predictions.argmax(dim=1)
 
-    roc_auc = roc_auc_score(targets.numpy(), probabilities.numpy(), multi_class='ovo')
+    try:
+        roc_auc = roc_auc_score(targets.numpy(), probabilities.numpy(), multi_class='ovo')
+    except ValueError:
+        roc_auc = 0
 
     # Calculate accuracy
     accuracy = accuracy_score(targets.numpy(), predicted_classes.numpy())
@@ -326,7 +329,7 @@ def evaluate_model(cfg, model, data_loader, loss_criterion, epoch=-1):
 
 
 def train_epoch(cfg, model, train_loader, loss_criterion, optimizer, scheduler, epoch):
-    scaler = torch.cuda.amp.GradScaler(enabled=cfg.apex)
+    # scaler = torch.cuda.amp.GradScaler(enabled=cfg.apex)
     # loss_fn = nn.CrossEntropyLoss(weight=cfg.weights.to(device), label_smoothing=0.1)
     loss_fn = loss_criterion
 
@@ -343,17 +346,16 @@ def train_epoch(cfg, model, train_loader, loss_criterion, optimizer, scheduler, 
         images = images.to(device, non_blocking=True)
         target = labels.to(device, non_blocking=True)
 
-        # https://pytorch.org/blog/accelerating-training-on-nvidia-gpus-with-pytorch-automatic-mixed-precision/
-        with torch.cuda.amp.autocast(enabled=cfg.apex):
-            logits = model(images)
-            loss = loss_fn(logits, target)
+        logits = model(images)
+        loss = loss_fn(logits, target)
 
-        scaler.scale(loss).backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=cfg.clip_val)
+        loss.backward()
+        # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=cfg.clip_val)
 
         train_loss += loss.item()
-        scaler.step(optimizer)
-        scaler.update()
+        # scaler.step(optimizer)
+        # scaler.update()
+        optimizer.step()
         optimizer.zero_grad()
 
         if scheduler is None:
@@ -372,12 +374,15 @@ def train_epoch(cfg, model, train_loader, loss_criterion, optimizer, scheduler, 
     targets = torch.cat(targets, dim=0)
     predictions = torch.cat(predictions, dim=0)
     probabilities = F.softmax(predictions, dim=1)
-
+    
     train_loss /= total_len
     # For multi-class classification, you might need the class with the highest probability
     predicted_classes = predictions.argmax(dim=1)
 
-    roc_auc = roc_auc_score(targets.numpy(), probabilities.numpy(), multi_class='ovo')
+    try:
+        roc_auc = roc_auc_score(targets.numpy(), probabilities.numpy(), multi_class='ovo')
+    except ValueError:
+        roc_auc = 0
 
     # Calculate accuracy
     accuracy = accuracy_score(targets.numpy(), predicted_classes.numpy())
@@ -555,9 +560,9 @@ for FOLD in CFG.train_folds:
             'learning_rate': train_lr[-1]  # Log the last learning rate of the epoch
         })
 
-        if (val_auc > best_score):
-            print(f"{style.GREEN}New best score: {best_score:.4f} -> {val_auc:.4f}{style.END}")
-            best_score = val_auc
+        if (val_accuracy > best_score):
+            print(f"{style.GREEN}New best score: {best_score:.4f} -> {val_accuracy:.4f}{style.END}")
+            best_score = val_accuracy
             torch.save(model.state_dict(), os.path.join(wandb.run.dir, f'best_model_fold_{FOLD}.pth'))
             
 
