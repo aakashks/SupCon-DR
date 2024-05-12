@@ -1,23 +1,9 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# # Load Data
-
-# In[ ]:
-
-
 OUTPUT_FOLDER = "/scratch/aakash_ks.iitr/dr-scnn/"
 DATA_FOLDER = "/scratch/aakash_ks.iitr/data/diabetic-retinopathy/"
 # TRAIN_DATA_FOLDER = DATA_FOLDER + 'resized_train/'
 TRAIN_DATA_FOLDER = DATA_FOLDER + 'resized_train_c/'
 
 # TEST_DATA_FOLDER = DATA_FOLDER + 'test/'
-
-
-# # Imports
-
-# In[ ]:
-
 
 import os
 import random
@@ -31,10 +17,6 @@ from PIL import Image
 
 plt.rcParams['figure.dpi'] = 200
 
-
-# In[ ]:
-
-
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
@@ -43,10 +25,6 @@ from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 from torchvision.transforms import v2
 
 import timm
-
-
-# In[ ]:
-
 
 NUM_CLASSES = 5
 
@@ -68,16 +46,14 @@ class CFG:
     batch_size = 64
     # gradient_accumulation_steps = 1
 
-    lr = 4e-3
+    lr = 1e-3
     weight_decay=1e-2
     
     resolution = 224
     samples_per_class = 500
+    
+    cl_margin = 2.0
     frozen_layers = 3
-
-
-# In[ ]:
-
 
 import wandb
 # from kaggle_secrets import UserSecretsClient
@@ -91,50 +67,22 @@ run = wandb.init(
     k:v for k, v in CFG.__dict__.items() if not k.startswith('__')}
 )
 
-
-# In[ ]:
-
-
 device = torch.device(CFG.device)
-
-
-# # Load train data
-
-# In[ ]:
-
 
 # train_data = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels.csv'))
 train_data = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels_cropped.csv')).sample(frac=1).reset_index(drop=True)
 train_data
-
-
-# In[ ]:
-
 
 # remove all images from the csv if they are not in the folder
 lst = map(lambda x: x[:-5], os.listdir(TRAIN_DATA_FOLDER))
 train_data = train_data[train_data.image.isin(lst)]
 len(train_data)
 
-
-# In[ ]:
-
-
 train_data.level.value_counts()
-
-
-# In[ ]:
-
 
 # take only 100 samples from each class
 train_data = train_data.groupby('level').head(CFG.samples_per_class).reset_index(drop=True)
 train_data.level.value_counts()
-
-
-# # Dataset
-
-# In[ ]:
-
 
 from torchvision.transforms import functional as func
 
@@ -163,10 +111,6 @@ class CustomTransform:
 
         return img_resized
 
-
-# In[ ]:
-
-
 # train_transforms = CustomTransform()
 
 train_transforms = v2.Compose([
@@ -183,10 +127,6 @@ val_transforms = v2.Compose([
     CustomTransform(),
     v2.ToDtype(torch.float32, scale=False),
 ])
-
-
-# In[ ]:
-
 
 class ImageTrainDataset(Dataset):
     def __init__(
@@ -210,49 +150,33 @@ class ImageTrainDataset(Dataset):
 
         return image, torch.tensor(label, dtype=torch.long)
 
-
-# In[ ]:
-
-
-# visualize the transformations
-train_dataset = ImageTrainDataset(TRAIN_DATA_FOLDER, train_data, train_transforms)
-image, label = train_dataset[15]
-transformed_img_pil = func.to_pil_image(image)
-plt.imshow(transformed_img_pil)
-
-
-# # Metric
-
-# In[ ]:
-
+# # visualize the transformations
+# train_dataset = ImageTrainDataset(TRAIN_DATA_FOLDER, train_data, train_transforms)
+# image, label = train_dataset[15]
+# transformed_img_pil = func.to_pil_image(image)
+# plt.imshow(transformed_img_pil)
 
 from sklearn.metrics import f1_score as sklearn_f1
 from sklearn.metrics import confusion_matrix, roc_auc_score, accuracy_score, precision_score
 
-
-# In[ ]:
-
-
-# def find_best_threshold(targets, predictions):
-#     score_5 = sklearn_f1(targets, predictions > 0.5)
-#     best_score = 0
-#     best_th = -1
-#     for i in range(100):
-#         threshold =  i/100
-#         _score = sklearn_f1(targets, predictions > threshold)
-#         if _score > best_score:
-#             best_score = _score
-#             best_th = threshold
-
-#     tn, fp, fn, tp = confusion_matrix(targets.numpy(), predictions.numpy() > best_th).ravel()
-#     print(f"tp: {tp}, tn: {tn}, fp: {fp}, fn: {fn}")
-#     return score_5, best_score, best_th
-
-
-# # Train and evaluate functions
-
-# In[ ]:
-
+def nce_loss(embeddings, labels, temperature=0.1):
+    embeddings = F.normalize(embeddings, p=2, dim=1)  # Normalize embeddings
+    similarity_matrix = torch.matmul(embeddings, embeddings.T) / temperature
+    
+    # Create targets for the positives: positions on the diagonal
+    labels = labels.unsqueeze(0)
+    positive_indices = torch.arange(embeddings.shape[0]).to(embeddings.device)
+    positive_logits = similarity_matrix[positive_indices, positive_indices]
+    
+    # Mask out positive samples from log-sum-exp calculation
+    mask = torch.eq(labels, labels.T).fill_diagonal_(0)
+    negative_logits = similarity_matrix.masked_select(mask).view(embeddings.shape[0], -1)
+    
+    # Calculate log-sum-exp across negatives for each sample and subtract log of positive
+    negative_logsumexp = torch.logsumexp(negative_logits, dim=1)
+    loss = -torch.mean(positive_logits - negative_logsumexp)
+    
+    return loss
 
 class style:
     BLUE = '\033[94m'
@@ -261,10 +185,6 @@ class style:
     END = '\033[0m'
     BOLD = '\033[1m'
 
-
-# In[ ]:
-
-
 def seed_everything(seed=42):
     random.seed(seed)
     os.environ['PYTHONHASHSEED'] = str(seed)
@@ -272,19 +192,12 @@ def seed_everything(seed=42):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
 
-
-# In[ ]:
-
-
 def evaluate_model(cfg, model, data_loader, loss_criterion, epoch=-1):
     # loss_fn = nn.CrossEntropyLoss(weight=cfg.weights.to(device), label_smoothing=0.1)
     loss_fn = loss_criterion
 
     model.eval()
     val_loss = 0
-
-    targets = []
-    predictions = []
 
     total_len = len(data_loader)
     tk0 = tqdm(enumerate(data_loader), total=total_len)
@@ -294,39 +207,21 @@ def evaluate_model(cfg, model, data_loader, loss_criterion, epoch=-1):
             images = images.to(device)
             target = labels.to(device)
 
-            logits = model(images)
-
-            loss = loss_fn(logits, target)
+            ####################
+            embeddings = model(images)
+            loss = loss_fn(embeddings, target)
+            ####################
+            
             val_loss += loss.item()
 
-            targets.append(target.detach().cpu())
-            predictions.append(logits.detach().cpu())
-            del images, target, logits
-
-    targets = torch.cat(targets, dim=0)
-    predictions = torch.cat(predictions, dim=0)
-    probabilities = F.softmax(predictions, dim=1)
+            del images, target
 
     val_loss /= total_len
     # base_score, best_score, best_th = find_best_threshold(targets, predictions[:, 1])
     # For multi-class classification, you might need the class with the highest probability
-    predicted_classes = predictions.argmax(dim=1)
 
-    try:
-        roc_auc = roc_auc_score(targets.numpy(), probabilities.numpy(), multi_class='ovo')
-    except ValueError:
-        roc_auc = 0
-
-    # Calculate accuracy
-    accuracy = accuracy_score(targets.numpy(), predicted_classes.numpy())
-
-    precision = precision_score(targets.numpy(), predicted_classes.numpy(), average='weighted')
-
-    print(f'Epoch {epoch}: validation loss = {val_loss:.4f} auc = {roc_auc:.4f} accuracy = {accuracy:.4f} precision = {precision:.4f}')
-    return val_loss, roc_auc, accuracy, precision
-
-
-# In[ ]:
+    print(f'Epoch {epoch}: validation loss = {val_loss:.4f}')
+    return val_loss
 
 
 def train_epoch(cfg, model, train_loader, loss_criterion, optimizer, scheduler, epoch):
@@ -338,18 +233,18 @@ def train_epoch(cfg, model, train_loader, loss_criterion, optimizer, scheduler, 
     train_loss = 0
     learning_rate_history = []
 
-    targets = []
-    predictions = []
-
     total_len = len(train_loader)
     tk0 = tqdm(enumerate(train_loader), total=total_len)
     for step, (images, labels) in tk0:
         images = images.to(device, non_blocking=True)
         target = labels.to(device, non_blocking=True)
 
-        logits = model(images)
-        loss = loss_fn(logits, target)
+        ####################
+        embeddings = model(images)
+        loss = loss_fn(embeddings, target)
+        ####################
 
+        # scaler.scale(loss).backward()
         loss.backward()
         # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=cfg.clip_val)
 
@@ -368,57 +263,21 @@ def train_epoch(cfg, model, train_loader, loss_criterion, optimizer, scheduler, 
         tk0.set_description(f"Epoch {epoch} training {step+1}/{total_len} [LR {lr:0.6f}] - loss: {train_loss/(step+1):.4f}")
         learning_rate_history.append(lr)
 
-        targets.append(target.detach().cpu())
-        predictions.append(logits.detach().cpu())
         del images, target
 
-    targets = torch.cat(targets, dim=0)
-    predictions = torch.cat(predictions, dim=0)
-    probabilities = F.softmax(predictions, dim=1)
-    
     train_loss /= total_len
-    # For multi-class classification, you might need the class with the highest probability
-    predicted_classes = predictions.argmax(dim=1)
 
-    try:
-        roc_auc = roc_auc_score(targets.numpy(), probabilities.numpy(), multi_class='ovo')
-    except ValueError:
-        roc_auc = 0
-
-    # Calculate accuracy
-    accuracy = accuracy_score(targets.numpy(), predicted_classes.numpy())
-
-    precision = precision_score(targets.numpy(), predicted_classes.numpy(), average='weighted')
-
-    print(f'Epoch {epoch}: training loss = {train_loss:.4f} auc = {roc_auc:.4f} accuracy = {accuracy:.4f} precision = {precision:.4f}')
-    return train_loss, learning_rate_history, roc_auc, accuracy, precision
-
-
-# # Train model
-
-# ## Split data
-# 
-# The distribution of classes in the training data is not balance so using StratifiedKFold will ensure that the distrubution of positive and negative samples in all folds will match the original distributions.
-
-# In[ ]:
-
+    print(f'Epoch {epoch}: training loss = {train_loss:.4f}')
+    return train_loss, learning_rate_history
 
 plt.figure(figsize=(4,2))
 sns.histplot(train_data["level"])
-
-
-# In[ ]:
-
 
 from sklearn.model_selection import StratifiedKFold
 
 sgkf = StratifiedKFold(n_splits=CFG.N_folds, random_state=CFG.seed, shuffle=True)
 for i, (train_index, test_index) in enumerate(sgkf.split(train_data["image"].values, train_data["level"].values)):
     train_data.loc[test_index, "fold"] = i
-
-
-# In[ ]:
-
 
 def freeze_initial_layers(model, freeze_up_to_layer=3):
     # The ResNet50 features block is typically named 'layerX' in PyTorch
@@ -432,10 +291,6 @@ def freeze_initial_layers(model, freeze_up_to_layer=3):
         else:
             print(f'Layer {name} is trainable.')
 
-
-# In[ ]:
-
-
 def create_model():
     model = timm.create_model(CFG.model_name, num_classes=NUM_CLASSES, pretrained=True)
 
@@ -447,18 +302,11 @@ def create_model():
     freeze_initial_layers(model, freeze_up_to_layer=CFG.frozen_layers)
     return model.to(device)
 
-
-# In[ ]:
-
-
 from sklearn.manifold import TSNE
 import matplotlib.colors as mcolors
 
 def get_embeddings(model, data_loader):
     model.eval()
-    
-    # remove the last layer (fc) of model to obtain embeddings
-    model = nn.Sequential(*list(model.children())[:-1])
     
     features = []
     targets = []
@@ -507,12 +355,8 @@ def plot_tsne(embeddings, labels):
     plt.title('t-SNE of Image Embeddings with Discrete Severity Levels')
     plt.xlabel('t-SNE Axis 1')
     plt.ylabel('t-SNE Axis 2')
-    plt.savefig(os.path.join(wandb.run.dir, f"tsne.png"), dpi=300, bbox_inches='tight')
-
-
-# ## Train folds
-
-# In[ ]:
+    plt.show()
+    plt.savefig(os.path.join(wandb.run.dir, f"tsne.png"), bbox_inches='tight')
 
 
 for FOLD in CFG.train_folds:
@@ -552,35 +396,46 @@ for FOLD in CFG.train_folds:
         optimizer, eta_min=1e-6, T_max =CFG.epochs * len(train_loader),
         )
     
-    loss_criterion = nn.CrossEntropyLoss()
+    ######################
+    loss_criterion = nce_loss
+    ######################
 
     # TRAIN FOLD
-    best_score = 0
+    best_loss = float('inf')
+    no_improve_epochs = 0
+    patience = 5  # Number of epochs to wait before stopping if no improvement
+
     
     wandb.run.tags = [f"fold_{FOLD}"]
     
     for epoch in range(0, CFG.epochs):
-        train_loss, train_lr, train_auc, train_accuracy, train_precision = train_epoch(CFG, model, train_loader, loss_criterion, optimizer, scheduler, epoch)
+        train_loss, train_lr = train_epoch(CFG, model, train_loader, loss_criterion, optimizer, scheduler, epoch)
 
-        val_loss, val_auc, val_accuracy, val_precision = evaluate_model(CFG, model, valid_loader, loss_criterion, epoch)
+        val_loss = evaluate_model(CFG, model, valid_loader, loss_criterion, epoch)
         
         # Log metrics to wandb
         wandb.log({
             'train_loss': train_loss,
-            'train_auc': train_auc,
-            'train_accuracy': train_accuracy,
-            'train_precision': train_precision,
             'val_loss': val_loss,
-            'val_auc': val_auc,
-            'val_accuracy': val_accuracy,
-            'val_precision': val_precision,
             'learning_rate': train_lr[-1]  # Log the last learning rate of the epoch
         })
 
-        if (val_accuracy > best_score):
-            print(f"{style.GREEN}New best score: {best_score:.4f} -> {val_accuracy:.4f}{style.END}")
-            best_score = val_accuracy
-            torch.save(model.state_dict(), os.path.join(wandb.run.dir, f'best_model_fold_{FOLD}.pth'))
+
+    if (val_loss < best_loss):
+        print(f"{style.GREEN}New best loss: {best_loss:.4f} -> {val_loss:.4f}{style.END}")
+        best_loss = val_loss
+        no_improve_epochs = 0  # Reset the counter since we improved
+        torch.save(model.state_dict(), os.path.join(wandb.run.dir, f'best_model_fold_{FOLD}.pth'))
+    else:
+        no_improve_epochs += 1
+        print(f"No improvement for {no_improve_epochs} epochs")
+
+    if no_improve_epochs >= patience:
+        print(f"Stopping early after {no_improve_epochs} epochs without improvement")
+        break
+    
+    
+    torch.save(model.state_dict(), os.path.join(wandb.run.dir, f'best_model_fold_{FOLD}.pth'))
             
 
     # plot a tsne plot of all the images using embeddings from the model
@@ -596,9 +451,5 @@ for FOLD in CFG.train_folds:
     
     features, targets = get_embeddings(model, loader)
     plot_tsne(features, targets)
-
-
-# In[ ]:
-
 
 wandb.finish()

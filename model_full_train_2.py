@@ -60,7 +60,7 @@ class CFG:
     workers = 16
 
     model_name = "resnet50.a1_in1k"
-    epochs = 20
+    epochs = 40
     cropped = True
     # weights =  torch.tensor([0.206119, 0.793881],dtype=torch.float32)
 
@@ -72,8 +72,8 @@ class CFG:
     weight_decay=1e-2
     
     resolution = 224
-    samples_per_class = 500
-    frozen_layers = 3
+    samples_per_class = 1000
+    frozen_layers = 2
 
 
 # In[ ]:
