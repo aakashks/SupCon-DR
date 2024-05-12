@@ -68,7 +68,7 @@ class CFG:
     batch_size = 64
     # gradient_accumulation_steps = 1
 
-    lr = 8e-3
+    lr = 6e-3
     weight_decay=1e-2
     
     resolution = 224
@@ -490,7 +490,7 @@ def plot_tsne(embeddings, labels):
     plt.title('t-SNE of Image Embeddings with Discrete Severity Levels')
     plt.xlabel('t-SNE Axis 1')
     plt.ylabel('t-SNE Axis 2')
-    plt.savefig(os.path.join(wandb.run.dir, f"tsne.png"), dpi=300)
+    plt.savefig(os.path.join(wandb.run.dir, f"tsne.png"), dpi=300, bbox_inches='tight')
 
 
 # ## Train folds
