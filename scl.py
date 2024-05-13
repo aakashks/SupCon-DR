@@ -48,19 +48,19 @@ class CFG:
     workers = 16
 
     model_name = "resnet50.a1_in1k"
-    epochs = 15
+    epochs = 21
     cropped = True
     # weights =  torch.tensor([0.206119, 0.793881],dtype=torch.float32)
 
     clip_val = 1000.
-    batch_size = 50
+    batch_size = 64
     # gradient_accumulation_steps = 1
 
     lr = 2e-3
     weight_decay=1e-2
     
     resolution = 224
-    samples_per_class = 500
+    samples_per_class = 1500
     frozen_layers = 0
     
     cl_method = 'SupCon'
@@ -518,7 +518,7 @@ for epoch in range(CFG.epochs):
     train_loss, train_lr = train_epoch(CFG, train_loader, model, criterion, device, optimizer, scheduler, epoch)
     scheduler.step()  # Update the learning rate scheduler at the end of each epoch
 
-    if (epoch+1) % 1 == 0:
+    if (epoch+1) % 3 == 0:
         torch.save(model.state_dict(), os.path.join(wandb.run.dir, f'ckpt_epoch_{epoch}.pth'))
 
         # plot a tsne plot of all the images using embeddings from the model
