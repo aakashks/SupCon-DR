@@ -262,4 +262,3 @@ dependencies:
       - nvidia-ml-py==12.550.52
       - safetensors==0.4.3
       - timm==0.9.16
-prefix: /home/aakash_ks.iitr/miniconda3/envs/py311
