@@ -52,15 +52,15 @@ NUM_CLASSES = 5
 
 class CFG:
     seed = 42
-    N_folds = 5
-    train_folds = [0, 1] # [0,1,2,3,4]
+    N_folds = 6
+    train_folds = [0, ] # [0,1,2,3,4]
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     apex=True # use half precision
     workers = 16
 
     model_name = "resnet50.a1_in1k"
-    epochs = 40
+    epochs = 10
     cropped = True
     # weights =  torch.tensor([0.206119, 0.793881],dtype=torch.float32)
 
@@ -68,12 +68,12 @@ class CFG:
     batch_size = 64
     # gradient_accumulation_steps = 1
 
-    lr = 4e-3
+    lr = 5e-3
     weight_decay=1e-2
     
     resolution = 224
     samples_per_class = 1000
-    frozen_layers = 2
+    frozen_layers = 0
 
 
 # In[ ]:
@@ -164,18 +164,18 @@ class CustomTransform:
         return img_resized
 
 
-# In[ ]:
+# In[359]:
 
 
 # train_transforms = CustomTransform()
 
 train_transforms = v2.Compose([
+    v2.GaussianBlur(kernel_size=(5, 5), sigma=(0.1, 2)),  # Gaussian blur with random kernel size and sigma
+    v2.RandomRotation(degrees=(0, 90)),  # Random rotation between 0 and 360 degrees
     CustomTransform(),
     # v2.RandomResizedCrop(CFG.resolution, scale=(0.8, 1.0)),  # Krizhevsky style random cropping
     v2.RandomHorizontalFlip(),  # Random horizontal flip
     v2.RandomVerticalFlip(),  # Random vertical flip
-    v2.GaussianBlur(kernel_size=(5, 5), sigma=(0.1, 2)),  # Gaussian blur with random kernel size and sigma
-    v2.RandomRotation(degrees=(0, 90)),  # Random rotation between 0 and 360 degrees
     v2.ToDtype(torch.float32, scale=False),
 ])
 
@@ -185,7 +185,7 @@ val_transforms = v2.Compose([
 ])
 
 
-# In[ ]:
+# In[360]:
 
 
 class ImageTrainDataset(Dataset):
@@ -211,12 +211,12 @@ class ImageTrainDataset(Dataset):
         return image, torch.tensor(label, dtype=torch.long)
 
 
-# In[ ]:
+# In[367]:
 
 
 # visualize the transformations
 train_dataset = ImageTrainDataset(TRAIN_DATA_FOLDER, train_data, train_transforms)
-image, label = train_dataset[15]
+image, label = train_dataset[11]
 transformed_img_pil = func.to_pil_image(image)
 plt.imshow(transformed_img_pil)
 
@@ -552,6 +552,8 @@ for FOLD in CFG.train_folds:
         optimizer, eta_min=1e-6, T_max =CFG.epochs * len(train_loader),
         )
     
+    # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=2, gamma=0.5)
+    
     loss_criterion = nn.CrossEntropyLoss()
 
     # TRAIN FOLD
@@ -602,3 +604,4 @@ for FOLD in CFG.train_folds:
 
 
 wandb.finish()
+

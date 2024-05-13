@@ -52,7 +52,7 @@ NUM_CLASSES = 5
 
 class CFG:
     seed = 42
-    N_folds = 6
+    N_folds = 5
     train_folds = [0, ] # [0,1,2,3,4]
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -68,7 +68,7 @@ class CFG:
     batch_size = 64
     # gradient_accumulation_steps = 1
 
-    lr = 5e-3
+    lr = 1e-3
     weight_decay=1e-2
     
     resolution = 224
@@ -551,6 +551,8 @@ for FOLD in CFG.train_folds:
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, eta_min=1e-6, T_max =CFG.epochs * len(train_loader),
         )
+    
+    # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=2, gamma=0.5)
     
     loss_criterion = nn.CrossEntropyLoss()
 

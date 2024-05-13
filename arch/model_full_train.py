@@ -52,28 +52,28 @@ NUM_CLASSES = 5
 
 class CFG:
     seed = 42
-    N_folds = -1
-    train_folds = [0, 1] # [0,1,2,3,4]
+    N_folds = 6
+    train_folds = [0, ] # [0,1,2,3,4]
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     apex=True # use half precision
     workers = 16
 
     model_name = "resnet50.a1_in1k"
-    epochs = 10
+    epochs = 20
     cropped = True
     # weights =  torch.tensor([0.206119, 0.793881],dtype=torch.float32)
 
     clip_val = 1000.
-    batch_size = 128
+    batch_size = 64
     # gradient_accumulation_steps = 1
 
-    lr = 5e-3
+    lr = 8e-3
     weight_decay=1e-2
     
     resolution = 224
-    samples_per_class = 10000
-    frozen_layers = 0
+    samples_per_class = 2000
+    frozen_layers = 1
 
 
 # In[ ]:
@@ -100,7 +100,7 @@ device = torch.device(CFG.device)
 
 # # Load train data
 
-# In[149]:
+# In[ ]:
 
 
 # train_data = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels.csv'))
@@ -108,7 +108,7 @@ train_data = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels_cropped.csv')).s
 train_data
 
 
-# In[150]:
+# In[ ]:
 
 
 # remove all images from the csv if they are not in the folder
@@ -117,7 +117,7 @@ train_data = train_data[train_data.image.isin(lst)]
 len(train_data)
 
 
-# In[151]:
+# In[ ]:
 
 
 train_data.level.value_counts()
@@ -164,7 +164,7 @@ class CustomTransform:
         return img_resized
 
 
-# In[ ]:
+# In[359]:
 
 
 # train_transforms = CustomTransform()
@@ -185,7 +185,7 @@ val_transforms = v2.Compose([
 ])
 
 
-# In[ ]:
+# In[360]:
 
 
 class ImageTrainDataset(Dataset):
@@ -211,12 +211,12 @@ class ImageTrainDataset(Dataset):
         return image, torch.tensor(label, dtype=torch.long)
 
 
-# In[ ]:
+# In[367]:
 
 
 # visualize the transformations
 train_dataset = ImageTrainDataset(TRAIN_DATA_FOLDER, train_data, train_transforms)
-image, label = train_dataset[15]
+image, label = train_dataset[11]
 transformed_img_pil = func.to_pil_image(image)
 plt.imshow(transformed_img_pil)
 
@@ -410,11 +410,27 @@ sns.histplot(train_data["level"])
 # In[ ]:
 
 
-# from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import StratifiedKFold
 
-# sgkf = StratifiedKFold(n_splits=CFG.N_folds, random_state=CFG.seed, shuffle=True)
-# for i, (train_index, test_index) in enumerate(sgkf.split(train_data["image"].values, train_data["level"].values)):
-#     train_data.loc[test_index, "fold"] = i
+sgkf = StratifiedKFold(n_splits=CFG.N_folds, random_state=CFG.seed, shuffle=True)
+for i, (train_index, test_index) in enumerate(sgkf.split(train_data["image"].values, train_data["level"].values)):
+    train_data.loc[test_index, "fold"] = i
+
+
+# In[ ]:
+
+
+def freeze_initial_layers(model, freeze_up_to_layer=3):
+    # The ResNet50 features block is typically named 'layerX' in PyTorch
+    layer_names = ['conv1', 'bn1', 'layer1', 'layer2', 'layer3', 'layer4']
+    # Iterate over model children (first level only, adjust as needed)
+    for name, child in model.named_children():
+        if name in layer_names[:freeze_up_to_layer]:
+            for param in child.parameters():
+                param.requires_grad = False
+            print(f'Layer {name} has been frozen.')
+        else:
+            print(f'Layer {name} is trainable.')
 
 
 # In[ ]:
@@ -428,7 +444,7 @@ def create_model():
 #     model.conv1 = nn.Conv2d(20, 64, 7, 2, 3, bias=False)
 #     model.conv1.weight = nn.Parameter(wd)
 #     model.fc = nn.Linear(in_features=2048, out_features=2, bias=True)
-    # freeze_initial_layers(model, freeze_up_to_layer=CFG.frozen_layers)
+    freeze_initial_layers(model, freeze_up_to_layer=CFG.frozen_layers)
     return model.to(device)
 
 
@@ -499,73 +515,93 @@ def plot_tsne(embeddings, labels):
 # In[ ]:
 
 
-seed_everything(CFG.seed)
+for FOLD in CFG.train_folds:
+    seed_everything(CFG.seed)
 
-# PREPARE DATA
+    # PREPARE DATA
+    fold_train_data = train_data[train_data["fold"] != FOLD].reset_index(drop=True)
+    fold_valid_data = train_data[train_data["fold"] == FOLD].reset_index(drop=True)
 
+    train_dataset = ImageTrainDataset(TRAIN_DATA_FOLDER, fold_train_data, transforms=train_transforms)
+    valid_dataset = ImageTrainDataset(TRAIN_DATA_FOLDER, fold_valid_data, transforms=val_transforms)
 
-train_dataset = ImageTrainDataset(TRAIN_DATA_FOLDER, train_data, transforms=train_transforms)
+    train_loader = DataLoader(
+            train_dataset,
+            batch_size=CFG.batch_size,
+            shuffle=True,
+            num_workers=CFG.workers,
+            pin_memory=True,
+            drop_last=True
+        )
 
-train_loader = DataLoader(
-        train_dataset,
+    valid_loader = DataLoader(
+        valid_dataset,
         batch_size=CFG.batch_size,
-        shuffle=True,
+        shuffle=False,
         num_workers=CFG.workers,
         pin_memory=True,
-        drop_last=True
+        drop_last=False,
     )
 
-# PREPARE MODEL, OPTIMIZER AND SCHEDULER
-model = create_model()
-print(f"Model parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad):_}")
+    # PREPARE MODEL, OPTIMIZER AND SCHEDULER
+    model = create_model()
+    print(f"Model parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad):_}")
 
-optimizer = torch.optim.AdamW(model.parameters(), lr=CFG.lr, weight_decay=CFG.weight_decay)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-    optimizer, eta_min=1e-6, T_max =CFG.epochs * len(train_loader),
-    )
-
-loss_criterion = nn.CrossEntropyLoss()
-
-
-for epoch in range(0, CFG.epochs):
-    train_loss, train_lr, train_auc, train_accuracy, train_precision = train_epoch(CFG, model, train_loader, loss_criterion, optimizer, scheduler, epoch)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=CFG.lr, weight_decay=CFG.weight_decay)
+    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+    #     optimizer, eta_min=1e-6, T_max =CFG.epochs * len(train_loader),
+    #     )
     
-    # Log metrics to wandb
-    wandb.log({
-        'train_loss': train_loss,
-        'train_auc': train_auc,
-        'train_accuracy': train_accuracy,
-        'train_precision': train_precision,
-        'learning_rate': train_lr[-1]  # Log the last learning rate of the epoch
-    })
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=2, gamma=0.8)
+    
+    loss_criterion = nn.CrossEntropyLoss()
 
+    # TRAIN FOLD
+    best_score = 0
+    
+    wandb.run.tags = [f"fold_{FOLD}"]
+    
+    for epoch in range(0, CFG.epochs):
+        train_loss, train_lr, train_auc, train_accuracy, train_precision = train_epoch(CFG, model, train_loader, loss_criterion, optimizer, scheduler, epoch)
 
-    torch.save(model.state_dict(), os.path.join(wandb.run.dir, f'final_model.pth'))
+        val_loss, val_auc, val_accuracy, val_precision = evaluate_model(CFG, model, valid_loader, loss_criterion, epoch)
         
+        # Log metrics to wandb
+        wandb.log({
+            'train_loss': train_loss,
+            'train_auc': train_auc,
+            'train_accuracy': train_accuracy,
+            'train_precision': train_precision,
+            'val_loss': val_loss,
+            'val_auc': val_auc,
+            'val_accuracy': val_accuracy,
+            'val_precision': val_precision,
+            'learning_rate': train_lr[-1]  # Log the last learning rate of the epoch
+        })
 
-# plot a tsne plot of all the images using embeddings from the model
-full_dataset = ImageTrainDataset(TRAIN_DATA_FOLDER, train_data, transforms=val_transforms)
-loader = DataLoader(
-    full_dataset,
-    batch_size=CFG.batch_size,
-    shuffle=False,
-    num_workers=CFG.workers,
-    pin_memory=True,
-    drop_last=False,
-)
+        if (val_accuracy > best_score):
+            print(f"{style.GREEN}New best score: {best_score:.4f} -> {val_accuracy:.4f}{style.END}")
+            best_score = val_accuracy
+            torch.save(model.state_dict(), os.path.join(wandb.run.dir, f'best_model_fold_{FOLD}.pth'))
+            
 
-features, targets = get_embeddings(model, loader)
-plot_tsne(features, targets)
+    # plot a tsne plot of all the images using embeddings from the model
+    full_dataset = ImageTrainDataset(TRAIN_DATA_FOLDER, train_data, transforms=val_transforms)
+    loader = DataLoader(
+        full_dataset,
+        batch_size=CFG.batch_size,
+        shuffle=False,
+        num_workers=CFG.workers,
+        pin_memory=True,
+        drop_last=False,
+    )
+    
+    features, targets = get_embeddings(model, loader)
+    plot_tsne(features, targets)
 
 
 # In[ ]:
 
 
 wandb.finish()
-
-
-# In[ ]:
-
-
-
 
