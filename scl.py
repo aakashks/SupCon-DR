@@ -60,10 +60,10 @@ class CFG:
     weight_decay=1e-2
     
     resolution = 224
-    samples_per_class = 1500
+    samples_per_class = 1000
     frozen_layers = 0
     
-    cl_method = 'SupCon'
+    cl_method = 'SimCLR'
 
 
 import wandb
