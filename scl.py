@@ -48,7 +48,7 @@ class CFG:
     workers = 16
 
     model_name = "resnet50.a1_in1k"
-    epochs = 10
+    epochs = 15
     cropped = True
     # weights =  torch.tensor([0.206119, 0.793881],dtype=torch.float32)
 
@@ -56,11 +56,11 @@ class CFG:
     batch_size = 50
     # gradient_accumulation_steps = 1
 
-    lr = 1e-2
+    lr = 2e-3
     weight_decay=1e-2
     
     resolution = 224
-    samples_per_class = 400
+    samples_per_class = 500
     frozen_layers = 0
     
     cl_method = 'SupCon'
@@ -473,15 +473,16 @@ def plot_tsne(embeddings, labels, name='tsne.png'):
     # Create a boundary norm with boundaries and colors
     norm = mcolors.BoundaryNorm(np.arange(-0.5, num_classes + 0.5, 1), cmap.N)
 
-    plt.figure(figsize=(10, 8))
-    scatter = plt.scatter(tsne_results[:, 0], tsne_results[:, 1], c=labels, cmap=cmap, norm=norm, alpha=0.7)
+    fig = plt.figure(figsize=(10, 8))
+    scatter = plt.scatter(tsne_results[:, 0], tsne_results[:, 1], c=labels, cmap=cmap, norm=norm, alpha=0.5)
     colorbar = plt.colorbar(scatter, ticks=np.arange(num_classes))
     colorbar.set_label('Severity Level')
     colorbar.set_ticklabels(np.arange(num_classes))  # Set discrete labels if needed
     plt.title('t-SNE of Image Embeddings with Discrete Severity Levels')
     plt.xlabel('t-SNE Axis 1')
     plt.ylabel('t-SNE Axis 2')
-    wandb.log({"t-SNE": plt})
+    fg = wandb.Image(fig)
+    wandb.log({"t-SNE": fg})
     plt.savefig(os.path.join(wandb.run.dir, name), dpi=300, bbox_inches='tight')
 
 
@@ -517,7 +518,7 @@ for epoch in range(CFG.epochs):
     train_loss, train_lr = train_epoch(CFG, train_loader, model, criterion, device, optimizer, scheduler, epoch)
     scheduler.step()  # Update the learning rate scheduler at the end of each epoch
 
-    if epoch % 2 == 0:
+    if (epoch+1) % 1 == 0:
         torch.save(model.state_dict(), os.path.join(wandb.run.dir, f'ckpt_epoch_{epoch}.pth'))
 
         # plot a tsne plot of all the images using embeddings from the model
