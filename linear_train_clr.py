@@ -267,14 +267,30 @@ class LinearClassifier(nn.Module):
 
     def forward(self, x):
         return self.model(x)
+    
+
+class SupConModel(nn.Module):
+    def __init__(self, encoder, input_dim=2048, output_dim=128):        # assuming either resnet50 or resnet101 is used
+        super().__init__()
+        self.encoder = encoder
+        self.head = nn.Sequential(
+            nn.Linear(input_dim, 512),
+            nn.ReLU(inplace=True),
+            nn.Linear(512, output_dim)
+        )
+    
+    def forward(self, x):
+        ft = self.encoder(x)
+        return F.normalize(self.head(ft), dim=1)
 
 
 def create_model():
     # get the feature extractor
-    feature_extractor = timm.create_model(CFG.model_name, num_classes=NUM_CLASSES, pretrained=False)
-    feature_extractor.load_state_dict(torch.load(OUTPUT_FOLDER + 'tl_model.pth'))
+    resnet = timm.create_model(CFG.model_name, num_classes=0, pretrained=False)
+    feature_extractor = SupConModel(resnet)
+    feature_extractor.load_state_dict(torch.load(OUTPUT_FOLDER + 'ckpt_epoch_20.pth'))
     
-    # remove the final layer
+    # remove the projection head
     feature_extractor = nn.Sequential(*list(feature_extractor.children())[:-1])
 
     # create a simple linear classifier

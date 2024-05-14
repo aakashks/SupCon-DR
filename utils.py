@@ -1,4 +1,3 @@
-from torchvision import transforms as func
 import torch
 from torch.utils.data import Dataset
 
@@ -46,7 +45,7 @@ def get_embeddings(model, data_loader):
     model.eval()
 
     # remove the last layer (fc) of model to obtain embeddings
-    model = nn.Sequential(*list(model.children())[:-1])
+    model = nn.Sequential(*list(model.children())[:-2])
 
     features = []
     targets = []
