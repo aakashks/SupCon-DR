@@ -6,10 +6,8 @@ TRAIN_DATA_FOLDER = DATA_FOLDER + 'resized_train_c/'
 TEST_DATA_FOLDER = DATA_FOLDER + 'test/'
 
 import os
-import random
 
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 from PIL import Image
 from tqdm import tqdm
@@ -20,7 +18,7 @@ import torch
 import torch.nn.functional as F
 import torch.nn as nn
 
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 from torchvision.transforms import v2
 
 import timm
@@ -38,7 +36,7 @@ class CFG:
     workers = 16
 
     model_name = "resnet50.a1_in1k"
-    epochs = 20
+    epochs = 10
     cropped = True
     # weights =  torch.tensor([0.206119, 0.793881],dtype=torch.float32)
 
@@ -46,7 +44,7 @@ class CFG:
     batch_size = 64
     # gradient_accumulation_steps = 1
 
-    lr = 5e-3
+    lr = 1e-3
     weight_decay = 1e-2
 
     resolution = 224
@@ -76,6 +74,7 @@ train_data = train_data[train_data.image.isin(lst)]
 train_data = train_data.groupby('level').head(CFG.samples_per_class).reset_index(drop=True)
 
 from torchvision.transforms import functional as func
+from utils import *
 
 
 class CustomTransform:
@@ -154,26 +153,12 @@ class ImageTrainDataset(Dataset):
 from sklearn.metrics import roc_auc_score, accuracy_score, precision_score
 
 
-class style:
-    BLUE = '\033[94m'
-    GREEN = '\033[92m'
-    YELLOW = '\033[93m'
-    END = '\033[0m'
-    BOLD = '\033[1m'
-
-
-def seed_everything(seed=42):
-    random.seed(seed)
-    os.environ['PYTHONHASHSEED'] = str(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-
-
-def evaluate_model(cfg, model, data_loader, loss_criterion, epoch=-1):
+def evaluate_model(cfg, feature_extractor, classifier, data_loader, loss_criterion, epoch=-1):
     loss_fn = loss_criterion
 
+    model = classifier
     model.eval()
+
     val_loss = 0
 
     targets = []
@@ -187,7 +172,10 @@ def evaluate_model(cfg, model, data_loader, loss_criterion, epoch=-1):
             images = images.to(device)
             target = labels.to(device)
 
-            logits = model(images)
+            with torch.no_grad():
+                features = feature_extractor(images)
+
+            logits = model(features)
 
             loss = loss_fn(logits, target)
             val_loss += loss.item()
@@ -221,10 +209,12 @@ def evaluate_model(cfg, model, data_loader, loss_criterion, epoch=-1):
     return val_loss, roc_auc, accuracy, precision
 
 
-def train_epoch(cfg, model, train_loader, loss_criterion, optimizer, scheduler, epoch):
+def train_epoch(cfg, feature_extractor, classifier, train_loader, loss_criterion, optimizer, scheduler, epoch):
     loss_fn = loss_criterion
 
+    model = classifier
     model.train()
+
     train_loss = 0
     learning_rate_history = []
 
@@ -237,7 +227,10 @@ def train_epoch(cfg, model, train_loader, loss_criterion, optimizer, scheduler, 
         images = images.to(device, non_blocking=True)
         target = labels.to(device, non_blocking=True)
 
-        logits = model(images)
+        with torch.no_grad():
+            features = feature_extractor(images)
+
+        logits = model(features)
         loss = loss_fn(logits, target)
 
         loss.backward()
@@ -255,6 +248,7 @@ def train_epoch(cfg, model, train_loader, loss_criterion, optimizer, scheduler, 
 
         tk0.set_description(
             f"Epoch {epoch} training {step + 1}/{total_len} [LR {lr:0.6f}] - loss: {train_loss / (step + 1):.4f}")
+
         learning_rate_history.append(lr)
 
         targets.append(target.detach().cpu())
@@ -290,19 +284,6 @@ for i, (train_index, test_index) in enumerate(sgkf.split(train_data["image"].val
     train_data.loc[test_index, "fold"] = i
 
 
-def freeze_initial_layers(model, freeze_up_to_layer=3):
-    # The ResNet50 features block is typically named 'layerX' in PyTorch
-    layer_names = ['conv1', 'bn1', 'layer1', 'layer2', 'layer3', 'layer4']
-
-    for name, child in model.named_children():
-        if name in layer_names[:freeze_up_to_layer]:
-            for param in child.parameters():
-                param.requires_grad = False
-            print(f'Layer {name} has been frozen.')
-        else:
-            print(f'Layer {name} is trainable.')
-
-
 class LinearClassifier(nn.Module):
     def __init__(self, in_features=2048, num_classes=NUM_CLASSES):
         super().__init__()
@@ -311,16 +292,15 @@ class LinearClassifier(nn.Module):
     def forward(self, x):
         return self.model(x)
 
+
 def create_model():
     # get the feature extractor
     feature_extractor = timm.create_model(CFG.model_name, pretrained=False)
-    feature_extractor.load_state_dict(torch.load('/scratch' + 'best_model.pth'))
-    
-    
-    # create a simple linear classifier
-    model = LinearClassifier()
-    return model.to(device)
+    feature_extractor.load_state_dict(torch.load(OUTPUT_FOLDER + 'tl_model.pth'))
 
+    # create a simple linear classifier
+    classifier = LinearClassifier()
+    return feature_extractor.to(device), classifier.to(device)
 
 
 for FOLD in CFG.train_folds:
@@ -352,7 +332,8 @@ for FOLD in CFG.train_folds:
     )
 
     # PREPARE MODEL, OPTIMIZER AND SCHEDULER
-    model = create_model()
+    feature_extractor, model = create_model()
+    feature_extractor.eval()
     print(f"Model parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad):_}")
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=CFG.lr, weight_decay=CFG.weight_decay)
@@ -367,11 +348,13 @@ for FOLD in CFG.train_folds:
     wandb.run.tags = [f"fold_{FOLD}"]
 
     for epoch in range(0, CFG.epochs):
-        train_loss, train_lr, train_auc, train_accuracy, train_precision = train_epoch(CFG, model, train_loader,
+        train_loss, train_lr, train_auc, train_accuracy, train_precision = train_epoch(CFG, feature_extractor,
+                                                                                       model, train_loader,
                                                                                        loss_criterion, optimizer,
                                                                                        scheduler, epoch)
 
-        val_loss, val_auc, val_accuracy, val_precision = evaluate_model(CFG, model, valid_loader, loss_criterion, epoch)
+        val_loss, val_auc, val_accuracy, val_precision = evaluate_model(CFG, feature_extractor, model, valid_loader,
+                                                                        loss_criterion, epoch)
 
         # Log metrics to wandb
         wandb.log({
@@ -389,6 +372,6 @@ for FOLD in CFG.train_folds:
         if (val_accuracy > best_score):
             print(f"{style.GREEN}New best score: {best_score:.4f} -> {val_accuracy:.4f}{style.END}")
             best_score = val_accuracy
-            torch.save(model.state_dict(), os.path.join(wandb.run.dir, f'best_model_fold_{FOLD}.pth'))
+            torch.save(model.state_dict(), os.path.join(wandb.run.dir, f'best_lc_fold_{FOLD}.pth'))
 
 wandb.finish()
