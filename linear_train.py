@@ -3,7 +3,7 @@ DATA_FOLDER = "/scratch/aakash_ks.iitr/data/diabetic-retinopathy/"
 # TRAIN_DATA_FOLDER = DATA_FOLDER + 'resized_train/'
 TRAIN_DATA_FOLDER = DATA_FOLDER + 'resized_train_c/'
 
-# TEST_DATA_FOLDER = DATA_FOLDER + 'test/'
+TEST_DATA_FOLDER = DATA_FOLDER + 'test/'
 
 import os
 import random
@@ -304,14 +304,19 @@ def freeze_initial_layers(model, freeze_up_to_layer=3):
 
 
 class LinearClassifier(nn.Module):
-    def __init__(self, num_classes=NUM_CLASSES):
+    def __init__(self, in_features=2048, num_classes=NUM_CLASSES):
         super().__init__()
-        self.model = nn.Linear(self.model.fc.in_features, num_classes)
+        self.model = nn.Linear(in_features, num_classes)
 
     def forward(self, x):
         return self.model(x)
 
 def create_model():
+    # get the feature extractor
+    feature_extractor = timm.create_model(CFG.model_name, pretrained=False)
+    feature_extractor.load_state_dict(torch.load('/scratch' + 'best_model.pth'))
+    
+    
     # create a simple linear classifier
     model = LinearClassifier()
     return model.to(device)
