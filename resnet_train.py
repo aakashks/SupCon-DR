@@ -24,6 +24,7 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision.transforms import v2
 
 import timm
+from utils import *
 
 NUM_CLASSES = 5
 
@@ -121,30 +122,6 @@ val_transforms = v2.Compose([
     v2.ToDtype(torch.float32, scale=False),
 ])
 
-
-class ImageTrainDataset(Dataset):
-    def __init__(
-            self,
-            folder,
-            data,
-            transforms,
-    ):
-        self.folder = folder
-        self.data = data
-        self.transforms = transforms
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, index):
-        d = self.data.loc[index]
-        image = Image.open(f"{self.folder}{d.image}.jpeg")
-        image = self.transforms(image)
-        label = d.level
-
-        return image, torch.tensor(label, dtype=torch.long)
-
-
 # # visualize the transformations
 # train_dataset = ImageTrainDataset(TRAIN_DATA_FOLDER, train_data, train_transforms)
 # image, label = train_dataset[11]
@@ -152,23 +129,6 @@ class ImageTrainDataset(Dataset):
 # plt.imshow(transformed_img_pil)
 
 from sklearn.metrics import roc_auc_score, accuracy_score, precision_score
-
-
-class style:
-    BLUE = '\033[94m'
-    GREEN = '\033[92m'
-    YELLOW = '\033[93m'
-    END = '\033[0m'
-    BOLD = '\033[1m'
-
-
-def seed_everything(seed=42):
-    random.seed(seed)
-    os.environ['PYTHONHASHSEED'] = str(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-
 
 def evaluate_model(cfg, model, data_loader, loss_criterion, epoch=-1):
     loss_fn = loss_criterion
@@ -290,88 +250,12 @@ for i, (train_index, test_index) in enumerate(sgkf.split(train_data["image"].val
     train_data.loc[test_index, "fold"] = i
 
 
-def freeze_initial_layers(model, freeze_up_to_layer=3):
-    # The ResNet50 features block is typically named 'layerX' in PyTorch
-    layer_names = ['conv1', 'bn1', 'layer1', 'layer2', 'layer3', 'layer4']
-
-    for name, child in model.named_children():
-        if name in layer_names[:freeze_up_to_layer]:
-            for param in child.parameters():
-                param.requires_grad = False
-            print(f'Layer {name} has been frozen.')
-        else:
-            print(f'Layer {name} is trainable.')
-
-
 def create_model():
     model = timm.create_model(CFG.model_name, num_classes=NUM_CLASSES, pretrained=True)
 
     # freeze the initial layers
     freeze_initial_layers(model, freeze_up_to_layer=CFG.frozen_layers)
     return model.to(device)
-
-
-from sklearn.manifold import TSNE
-import matplotlib.colors as mcolors
-
-
-def get_embeddings(model, data_loader):
-    model.eval()
-
-    # remove the last layer (fc) of model to obtain embeddings
-    model = nn.Sequential(*list(model.children())[:-1])
-
-    features = []
-    targets = []
-
-    total_len = len(data_loader)
-    tk0 = tqdm(enumerate(data_loader), total=total_len)
-    with torch.no_grad():
-        for step, (images, labels) in tk0:
-            images = images.to(device)
-            target = labels.to(device)
-
-            embds = model(images)
-
-            features.append(embds.detach().cpu())
-            targets.append(target.detach().cpu())
-
-    features = torch.cat(features, dim=0)
-    targets = torch.cat(targets, dim=0)
-
-    # # store the embeddings for future use
-    # torch.save(features, os.path.join(wandb.run.dir, f"embeddings.pth"))
-    # torch.save(targets, os.path.join(wandb.run.dir, f"targets.pth"))
-
-    return features, targets
-
-
-def plot_tsne(embeddings, labels):
-    # Apply t-SNE to the embeddings
-    tsne = TSNE(n_components=2, verbose=1, perplexity=40, n_iter=300)
-    tsne_results = tsne.fit_transform(embeddings.numpy())
-
-    # Define the number of unique labels/classes
-    num_classes = len(np.unique(labels.numpy()))
-    # Create a custom color map with specific color transitions
-    colors = ['blue', 'green', 'yellow', 'orange', 'red']
-    cmap = mcolors.LinearSegmentedColormap.from_list("Custom", colors, N=num_classes)
-
-    # Create a boundary norm with boundaries and colors
-    norm = mcolors.BoundaryNorm(np.arange(-0.5, num_classes + 0.5, 1), cmap.N)
-
-    fig = plt.figure(figsize=(10, 8))
-    scatter = plt.scatter(tsne_results[:, 0], tsne_results[:, 1], c=labels, cmap=cmap, norm=norm, alpha=0.5)
-    colorbar = plt.colorbar(scatter, ticks=np.arange(num_classes))
-    colorbar.set_label('Severity Level')
-    colorbar.set_ticklabels(np.arange(num_classes))  # Set discrete labels if needed
-    plt.title('t-SNE of Image Embeddings with Discrete Severity Levels')
-    plt.xlabel('t-SNE Axis 1')
-    plt.ylabel('t-SNE Axis 2')
-    fg = wandb.Image(fig)
-    wandb.log({"t-SNE": fg})
-    plt.savefig(os.path.join(wandb.run.dir, f"tsne.png"), dpi=300, bbox_inches='tight')
-
 
 for FOLD in CFG.train_folds:
     seed_everything(CFG.seed)

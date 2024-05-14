@@ -120,30 +120,6 @@ val_transforms = v2.Compose([
     v2.ToDtype(torch.float32, scale=False),
 ])
 
-
-class ImageTrainDataset(Dataset):
-    def __init__(
-            self,
-            folder,
-            data,
-            transforms,
-    ):
-        self.folder = folder
-        self.data = data
-        self.transforms = transforms
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, index):
-        d = self.data.loc[index]
-        image = Image.open(f"{self.folder}{d.image}.jpeg")
-        image = self.transforms(image)
-        label = d.level
-
-        return image, torch.tensor(label, dtype=torch.long)
-
-
 # # visualize the transformations
 # train_dataset = ImageTrainDataset(TRAIN_DATA_FOLDER, train_data, train_transforms)
 # image, label = train_dataset[11]
@@ -295,8 +271,11 @@ class LinearClassifier(nn.Module):
 
 def create_model():
     # get the feature extractor
-    feature_extractor = timm.create_model(CFG.model_name, pretrained=False)
+    feature_extractor = timm.create_model(CFG.model_name, num_classes=NUM_CLASSES, pretrained=False)
     feature_extractor.load_state_dict(torch.load(OUTPUT_FOLDER + 'tl_model.pth'))
+    
+    # remove the final layer
+    feature_extractor = nn.Sequential(*list(feature_extractor.children())[:-2])
 
     # create a simple linear classifier
     classifier = LinearClassifier()
@@ -373,5 +352,19 @@ for FOLD in CFG.train_folds:
             print(f"{style.GREEN}New best score: {best_score:.4f} -> {val_accuracy:.4f}{style.END}")
             best_score = val_accuracy
             torch.save(model.state_dict(), os.path.join(wandb.run.dir, f'best_lc_fold_{FOLD}.pth'))
+
+    # plot a tsne plot of all the images using embeddings from the model
+    full_dataset = ImageTrainDataset(TRAIN_DATA_FOLDER, train_data, transforms=val_transforms)
+    loader = DataLoader(
+        full_dataset,
+        batch_size=CFG.batch_size,
+        shuffle=False,
+        num_workers=CFG.workers,
+        pin_memory=True,
+        drop_last=False,
+    )
+
+    features, targets = get_embeddings(model, loader)
+    plot_tsne(features, targets)
 
 wandb.finish()
