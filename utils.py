@@ -41,37 +41,6 @@ class ImageTrainDataset(Dataset):
         return image, torch.tensor(label, dtype=torch.long)
 
 
-def get_embeddings(model, data_loader):
-    model.eval()
-
-    # remove the last layer (fc) of model to obtain embeddings
-    model = nn.Sequential(*list(model.children())[:-2])
-
-    features = []
-    targets = []
-
-    total_len = len(data_loader)
-    tk0 = tqdm(enumerate(data_loader), total=total_len)
-    with torch.no_grad():
-        for step, (images, labels) in tk0:
-            images = images.to(device)
-            target = labels.to(device)
-
-            embds = model(images)
-
-            features.append(embds.detach().cpu())
-            targets.append(target.detach().cpu())
-
-    features = torch.cat(features, dim=0)
-    targets = torch.cat(targets, dim=0)
-
-    # # store the embeddings for future use
-    # torch.save(features, os.path.join(wandb.run.dir, f"embeddings.pth"))
-    # torch.save(targets, os.path.join(wandb.run.dir, f"targets.pth"))
-
-    return features, targets
-
-
 def plot_tsne(embeddings, labels):
     # Apply t-SNE to the embeddings
     tsne = TSNE(n_components=2, verbose=1, perplexity=40, n_iter=300)

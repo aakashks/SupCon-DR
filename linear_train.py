@@ -148,8 +148,7 @@ def evaluate_model(cfg, feature_extractor, classifier, data_loader, loss_criteri
             images = images.to(device)
             target = labels.to(device)
 
-            with torch.no_grad():
-                features = feature_extractor(images)
+            features = feature_extractor(images)
 
             logits = model(features)
 
@@ -252,6 +251,33 @@ def train_epoch(cfg, feature_extractor, classifier, train_loader, loss_criterion
         f'Epoch {epoch}: training loss = {train_loss:.4f} auc = {roc_auc:.4f} accuracy = {accuracy:.4f} precision = {precision:.4f}')
     return train_loss, learning_rate_history, roc_auc, accuracy, precision
 
+
+def get_embeddings(model, data_loader):
+    model.eval()
+
+    features = []
+    targets = []
+
+    total_len = len(data_loader)
+    tk0 = tqdm(enumerate(data_loader), total=total_len)
+    with torch.no_grad():
+        for step, (images, labels) in tk0:
+            images = images.to(device)
+            target = labels.to(device)
+
+            embds = model(images)
+
+            features.append(embds.detach().cpu())
+            targets.append(target.detach().cpu())
+
+    features = torch.cat(features, dim=0)
+    targets = torch.cat(targets, dim=0)
+
+    # # store the embeddings for future use
+    # torch.save(features, os.path.join(wandb.run.dir, f"embeddings.pth"))
+    # torch.save(targets, os.path.join(wandb.run.dir, f"targets.pth"))
+
+    return features, targets
 
 from sklearn.model_selection import StratifiedKFold
 
@@ -364,7 +390,7 @@ for FOLD in CFG.train_folds:
         drop_last=False,
     )
 
-    features, targets = get_embeddings(model, loader)
+    features, targets = get_embeddings(feature_extractor, loader)
     plot_tsne(features, targets)
 
 wandb.finish()

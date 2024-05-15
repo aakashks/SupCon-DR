@@ -148,8 +148,7 @@ def evaluate_model(cfg, feature_extractor, classifier, data_loader, loss_criteri
             images = images.to(device)
             target = labels.to(device)
 
-            with torch.no_grad():
-                features = feature_extractor(images)
+            features = feature_extractor(images)
 
             logits = model(features)
 
@@ -288,7 +287,7 @@ def create_model():
     # get the feature extractor
     resnet = timm.create_model(CFG.model_name, num_classes=0, pretrained=False)
     feature_extractor = SupConModel(resnet)
-    feature_extractor.load_state_dict(torch.load(OUTPUT_FOLDER + 'ckpt_epoch_20.pth'))
+    feature_extractor.load_state_dict(torch.load(OUTPUT_FOLDER + 'ckpt_epoch_8.pth'))
     
     # remove the projection head
     feature_extractor = nn.Sequential(*list(feature_extractor.children())[:-1])
