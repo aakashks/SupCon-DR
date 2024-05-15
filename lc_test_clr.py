@@ -34,7 +34,7 @@ class CFG:
     workers = 16
 
     model_name = "resnet50.a1_in1k"
-    epochs = 10
+    epochs = 5
     cropped = True
     # weights =  torch.tensor([0.206119, 0.793881],dtype=torch.float32)
 
@@ -46,7 +46,6 @@ class CFG:
     weight_decay = 1e-2
 
     resolution = 224
-    samples_per_class = 1000
     frozen_layers = 0
 
 
@@ -293,7 +292,7 @@ def create_model():
     # get the feature extractor
     resnet = timm.create_model(CFG.model_name, num_classes=0, pretrained=False)
     feature_extractor = SupConModel(resnet)
-    feature_extractor.load_state_dict(torch.load(OUTPUT_FOLDER + 'ckpt_epoch_8.pth'))
+    feature_extractor.load_state_dict(torch.load(OUTPUT_FOLDER + 'ckpt_epoch_20.pth'))
     
     # remove the projection head
     feature_extractor = nn.Sequential(*list(feature_extractor.children())[:-1])
@@ -363,7 +362,7 @@ for epoch in range(0, CFG.epochs):
     if (val_accuracy > best_score):
         print(f"{style.GREEN}New best score: {best_score:.4f} -> {val_accuracy:.4f}{style.END}")
         best_score = val_accuracy
-        torch.save(model.state_dict(), os.path.join(wandb.run.dir, f'best_lc_test.pth'))
+        torch.save(model.state_dict(), os.path.join(wandb.run.dir, f'best_lc_test_clr.pth'))
 
 
 loader = DataLoader(

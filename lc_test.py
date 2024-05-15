@@ -35,7 +35,7 @@ class CFG:
     workers = 16
 
     model_name = "resnet50.a1_in1k"
-    epochs = 10
+    epochs = 5
     cropped = True
     # weights =  torch.tensor([0.206119, 0.793881],dtype=torch.float32)
 
@@ -47,7 +47,6 @@ class CFG:
     weight_decay = 1e-2
 
     resolution = 224
-    samples_per_class = 1000
     frozen_layers = 0
 
 
@@ -276,7 +275,7 @@ class LinearClassifier(nn.Module):
 
 def create_model():
     # get the feature extractor
-    feature_extractor = timm.create_model(CFG.model_name, num_classes=NUM_CLASSES, pretrained=False)
+    feature_extractor = timm.create_model(CFG.model_name, num_classes=5, pretrained=False)
     feature_extractor.load_state_dict(torch.load(OUTPUT_FOLDER + 'tl_model.pth'))
     
     # remove the final layer
