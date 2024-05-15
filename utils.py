@@ -16,6 +16,21 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 from torch import nn
 
 from PIL import Image
+import torch.nn.functional as F
+
+class SupConModel(nn.Module):
+    def __init__(self, encoder, input_dim=2048, output_dim=128):        # assuming either resnet50 or resnet101 is used
+        super().__init__()
+        self.encoder = encoder
+        self.head = nn.Sequential(
+            nn.Linear(input_dim, 512),
+            nn.ReLU(inplace=True),
+            nn.Linear(512, output_dim)
+        )
+    
+    def forward(self, x):
+        ft = self.encoder(x)
+        return F.normalize(self.head(ft), dim=1)
 
 
 class ImageTrainDataset(Dataset):
