@@ -64,7 +64,31 @@ class ContrastiveLearningDataset(Dataset):
 
         return [xi, xj], torch.tensor(label, dtype=torch.long)
 
-    
+
+def get_embeddings(model, data_loader):
+    model.eval()
+
+    features = []
+    targets = []
+
+    total_len = len(data_loader)
+    tk0 = tqdm(enumerate(data_loader), total=total_len)
+    with torch.no_grad():
+        for step, (images, labels) in tk0:
+            images = images.to(device)
+            target = labels.to(device)
+
+            embds = model(images)
+
+            features.append(embds.detach().cpu())
+            targets.append(target.detach().cpu())
+
+    features = torch.cat(features, dim=0)
+    targets = torch.cat(targets, dim=0)
+
+    return features, targets
+
+
 def plot_tsne(embeddings, labels, name='tsne.png'):
     # Apply t-SNE to the embeddings
     tsne = TSNE(n_components=2, verbose=1, perplexity=40, n_iter=300)

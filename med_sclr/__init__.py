@@ -1,4 +1,6 @@
 from utils import *
+from config import *
+from transforms import *
 
 NUM_CLASSES = 5
 

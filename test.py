@@ -1,58 +1,7 @@
-OUTPUT_FOLDER = "/scratch/aakash_ks.iitr/dr-scnn/"
-DATA_FOLDER = "/scratch/aakash_ks.iitr/data/diabetic-retinopathy/"
-# TRAIN_DATA_FOLDER = DATA_FOLDER + 'resized_train/'
-TRAIN_DATA_FOLDER = DATA_FOLDER + 'resized_train_c/'
-
-# TEST_DATA_FOLDER = DATA_FOLDER + 'test/'
-
-import os
-import random
-
-import matplotlib.pyplot as plt
-import numpy as np
+from med_sclr import *
 import pandas as pd
-from PIL import Image
-from tqdm import tqdm
-
-plt.rcParams['figure.dpi'] = 100
-
-import torch
-import torch.nn.functional as F
-import torch.nn as nn
-
-from torch.utils.data import DataLoader, Dataset
-from torchvision.transforms import v2
-
 import timm
-
-NUM_CLASSES = 5
-
-
-class CFG:
-    seed = 42
-    N_folds = 6
-    train_folds = [0, ]  # [0,1,2,3,4]
-
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    apex = True  # use half precision
-    workers = 16
-
-    model_name = "resnet50.a1_in1k"
-    epochs = 20
-    cropped = True
-    # weights =  torch.tensor([0.206119, 0.793881],dtype=torch.float32)
-
-    clip_val = 1000.
-    batch_size = 64
-    # gradient_accumulation_steps = 1
-
-    lr = 5e-3
-    weight_decay = 1e-2
-
-    resolution = 224
-    samples_per_class = 1000
-    frozen_layers = 0
-
+from torch.utils.data import DataLoader
 
 import wandb
 
@@ -75,96 +24,7 @@ train_data = train_data[train_data.image.isin(lst)]
 # take only 100 samples from each class
 train_data = train_data.groupby('level').head(CFG.samples_per_class).reset_index(drop=True)
 
-from torchvision.transforms import functional as func
-
-
-class CustomTransform:
-    def __init__(self, output_size=(CFG.resolution, CFG.resolution), radius_factor=0.9):
-        self.output_size = output_size
-        self.radius_factor = radius_factor
-
-    def __call__(self, img):
-        # Assuming img is a PIL Image
-        # Normalize and preprocess as previously defined
-        img = func.resize(img, int(min(img.size) / self.radius_factor))
-        img_tensor = func.to_tensor(img)
-        mean, std = img_tensor.mean([1, 2]), img_tensor.std([1, 2])
-        img_normalized = func.normalize(img_tensor, mean.tolist(), std.tolist())
-        kernel_size = 15
-        padding = kernel_size // 2
-        avg_pool = torch.nn.AvgPool2d(kernel_size, stride=1, padding=padding)
-        local_avg = avg_pool(img_normalized.unsqueeze(0)).squeeze(0)
-        img_subtracted = img_normalized - local_avg
-        center_crop_size = int(min(img_subtracted.shape[1:]) * self.radius_factor)
-        img_cropped = func.center_crop(img_subtracted, [center_crop_size, center_crop_size])
-
-        # Apply augmentations
-        img_resized = func.resize(img_cropped, self.output_size)
-
-        return img_resized
-
-
-val_transforms = v2.Compose([
-    CustomTransform(),
-    v2.ToDtype(torch.float32, scale=False),
-])
-
-
-class ImageTrainDataset(Dataset):
-    def __init__(
-            self,
-            folder,
-            data,
-            transforms,
-    ):
-        self.folder = folder
-        self.data = data
-        self.transforms = transforms
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, index):
-        d = self.data.loc[index]
-        image = Image.open(f"{self.folder}{d.image}.jpeg")
-        image = self.transforms(image)
-        label = d.level
-
-        return image, torch.tensor(label, dtype=torch.long)
-
-
-class SupConModel(nn.Module):
-    def __init__(self, encoder, input_dim=2048, output_dim=128):        # assuming either resnet50 or resnet101 is used
-        super().__init__()
-        self.encoder = encoder
-        self.head = nn.Sequential(
-            nn.Linear(input_dim, 512),
-            nn.ReLU(inplace=True),
-            nn.Linear(512, output_dim)
-        )
-    
-    def forward(self, x):
-        ft = self.encoder(x)
-        return F.normalize(self.head(ft), dim=1)
-
 from sklearn.metrics import roc_auc_score, accuracy_score, precision_score
-
-
-class style:
-    BLUE = '\033[94m'
-    GREEN = '\033[92m'
-    YELLOW = '\033[93m'
-    END = '\033[0m'
-    BOLD = '\033[1m'
-
-
-def seed_everything(seed=42):
-    random.seed(seed)
-    os.environ['PYTHONHASHSEED'] = str(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-
 
 def evaluate_model(cfg, model, data_loader, epoch=-1):
 
@@ -281,19 +141,6 @@ for i, (train_index, test_index) in enumerate(sgkf.split(train_data["image"].val
     train_data.loc[test_index, "fold"] = i
 
 
-def freeze_initial_layers(model, freeze_up_to_layer=3):
-    # The ResNet50 features block is typically named 'layerX' in PyTorch
-    layer_names = ['conv1', 'bn1', 'layer1', 'layer2', 'layer3', 'layer4']
-
-    for name, child in model.named_children():
-        if name in layer_names[:freeze_up_to_layer]:
-            for param in child.parameters():
-                param.requires_grad = False
-            print(f'Layer {name} has been frozen.')
-        else:
-            print(f'Layer {name} is trainable.')
-
-
 def create_model():
     model = timm.create_model(CFG.model_name, num_classes=NUM_CLASSES, pretrained=True)
 
@@ -305,36 +152,6 @@ def create_model():
 from sklearn.manifold import TSNE
 import matplotlib.colors as mcolors
 
-
-def get_embeddings(model, data_loader):
-    model.eval()
-
-    # remove the last layer (fc) of model to obtain embeddings
-    model = nn.Sequential(*list(model.children())[:-1])
-
-    features = []
-    targets = []
-
-    total_len = len(data_loader)
-    tk0 = tqdm(enumerate(data_loader), total=total_len)
-    with torch.no_grad():
-        for step, (images, labels) in tk0:
-            images = images.to(device)
-            target = labels.to(device)
-
-            embds = model(images)
-
-            features.append(embds.detach().cpu())
-            targets.append(target.detach().cpu())
-
-    features = torch.cat(features, dim=0)
-    targets = torch.cat(targets, dim=0)
-
-    # # store the embeddings for future use
-    # torch.save(features, os.path.join(wandb.run.dir, f"embeddings.pth"))
-    # torch.save(targets, os.path.join(wandb.run.dir, f"targets.pth"))
-
-    return features, targets
 
 
 def plot_tsne(embeddings, labels):
@@ -443,7 +260,7 @@ for FOLD in CFG.train_folds:
         drop_last=False,
     )
 
-    features, targets = get_embeddings(model, loader)
+    features, targets = get_embeddings(nn.Sequential(*list(model.children())[:-1]), loader)
     plot_tsne(features, targets)
 
 wandb.finish()

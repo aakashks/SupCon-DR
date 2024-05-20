@@ -1,60 +1,9 @@
-OUTPUT_FOLDER = "/scratch/aakash_ks.iitr/dr-scnn/"
-DATA_FOLDER = "/scratch/aakash_ks.iitr/data/diabetic-retinopathy/"
-# TRAIN_DATA_FOLDER = DATA_FOLDER + 'resized_train/'
-TRAIN_DATA_FOLDER = DATA_FOLDER + 'resized_train_c/'
-
-# TEST_DATA_FOLDER = DATA_FOLDER + 'test/'
-
-import os
-import random
-
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
-from PIL import Image
-from tqdm import tqdm
-
-plt.rcParams['figure.dpi'] = 100
-
-import torch
-import torch.nn.functional as F
-import torch.nn as nn
-
-from torch.utils.data import DataLoader, Dataset
-from torchvision.transforms import v2
+from med_sclr import *
 
 import timm
-from utils import *
+import pandas as pd
 
-NUM_CLASSES = 5
-
-
-class CFG:
-    seed = 42
-    N_folds = 6
-    train_folds = [0, ]  # [0,1,2,3,4]
-
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    apex = True  # use half precision
-    workers = 16
-
-    model_name = "resnet50.a1_in1k"
-    epochs = 20
-    cropped = True
-    # weights =  torch.tensor([0.206119, 0.793881],dtype=torch.float32)
-
-    clip_val = 1000.
-    batch_size = 64
-    # gradient_accumulation_steps = 1
-
-    lr = 5e-3
-    weight_decay = 1e-2
-
-    resolution = 224
-    samples_per_class = 1000
-    frozen_layers = 0
-
-
+from torch.utils.data import DataLoader
 import wandb
 
 run = wandb.init(
@@ -73,60 +22,15 @@ train_data = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels_cropped.csv')).s
 lst = map(lambda x: x[:-5], os.listdir(TRAIN_DATA_FOLDER))
 train_data = train_data[train_data.image.isin(lst)]
 
-# take only 100 samples from each class
+# take only few samples from each class
 train_data = train_data.groupby('level').head(CFG.samples_per_class).reset_index(drop=True)
-
-from torchvision.transforms import functional as func
-
-
-class CustomTransform:
-    def __init__(self, output_size=(CFG.resolution, CFG.resolution), radius_factor=0.9):
-        self.output_size = output_size
-        self.radius_factor = radius_factor
-
-    def __call__(self, img):
-        # Assuming img is a PIL Image
-        # Normalize and preprocess as previously defined
-        img = func.resize(img, int(min(img.size) / self.radius_factor))
-        img_tensor = func.to_tensor(img)
-        mean, std = img_tensor.mean([1, 2]), img_tensor.std([1, 2])
-        img_normalized = func.normalize(img_tensor, mean.tolist(), std.tolist())
-        kernel_size = 15
-        padding = kernel_size // 2
-        avg_pool = torch.nn.AvgPool2d(kernel_size, stride=1, padding=padding)
-        local_avg = avg_pool(img_normalized.unsqueeze(0)).squeeze(0)
-        img_subtracted = img_normalized - local_avg
-        center_crop_size = int(min(img_subtracted.shape[1:]) * self.radius_factor)
-        img_cropped = func.center_crop(img_subtracted, [center_crop_size, center_crop_size])
-
-        # Apply augmentations
-        img_resized = func.resize(img_cropped, self.output_size)
-
-        return img_resized
-
-
-# train_transforms = CustomTransform()
-
-train_transforms = v2.Compose([
-    v2.GaussianBlur(kernel_size=(5, 5), sigma=(0.1, 2)),
-    v2.RandomRotation(degrees=(0, 90)),
-    CustomTransform(),
-    # v2.RandomResizedCrop(CFG.resolution, scale=(0.8, 1.0)),
-    v2.RandomHorizontalFlip(),
-    v2.RandomVerticalFlip(),
-    v2.ToDtype(torch.float32, scale=False),
-])
-
-val_transforms = v2.Compose([
-    CustomTransform(),
-    v2.ToDtype(torch.float32, scale=False),
-])
 
 # # visualize the transformations
 # train_dataset = ImageTrainDataset(TRAIN_DATA_FOLDER, train_data, train_transforms)
 # image, label = train_dataset[11]
 # transformed_img_pil = func.to_pil_image(image)
 # plt.imshow(transformed_img_pil)
+
 
 from sklearn.metrics import roc_auc_score, accuracy_score, precision_score
 
