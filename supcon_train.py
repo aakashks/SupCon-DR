@@ -1,13 +1,7 @@
 from med_sclr import *
 from med_sclr.supcon import SupConModel, SupConLoss
 
-import pandas as pd
-from torch.utils.data import DataLoader
-import timm
-
 CFG.cl_method = 'SimCLR'
-
-import wandb
 
 run = wandb.init(
     project="aml", 
@@ -31,10 +25,6 @@ lst = map(lambda x: x[:-5], os.listdir(TRAIN_DATA_FOLDER))
 train_data = train_data[train_data.image.isin(lst)]
 # take only 100 samples from each class
 train_data = train_data.groupby('level').head(CFG.samples_per_class).reset_index(drop=True)
-
-from sklearn.metrics import f1_score as sklearn_f1
-from sklearn.metrics import confusion_matrix, roc_auc_score, accuracy_score, precision_score
-
 
 def train_epoch(cfg, train_loader, model, criterion, device, optimizer, scheduler, epoch):  
     model.train()
@@ -92,16 +82,11 @@ def create_model():
     freeze_initial_layers(model, freeze_up_to_layer=CFG.frozen_layers)
     return model.to(device)
 
-
-from sklearn.manifold import TSNE
-import matplotlib.colors as mcolors
-
-
 ## Train folds
 
 seed_everything(CFG.seed)
 
-train_dataset = ContrastiveLearningDataset(TRAIN_DATA_FOLDER, train_data, transform=train_transforms)
+train_dataset = ContrastiveLearningDataset(TRAIN_DATA_FOLDER, train_data, transform=sclr_train_transforms)
 # valid_dataset = ImageTrainDataset(TRAIN_DATA_FOLDER, fold_valid_data, transforms=val_transforms)
 
 train_loader = DataLoader(

@@ -1,13 +1,7 @@
 from med_sclr import *
 
-import timm
-import pandas as pd
-
-from torch.utils.data import DataLoader
-import wandb
-
 run = wandb.init(
-    project="hello-world",
+    project="aml",
     dir=OUTPUT_FOLDER,
     config={
         k: v for k, v in CFG.__dict__.items() if not k.startswith('__')}
@@ -31,8 +25,6 @@ train_data = train_data.groupby('level').head(CFG.samples_per_class).reset_index
 # transformed_img_pil = func.to_pil_image(image)
 # plt.imshow(transformed_img_pil)
 
-
-from sklearn.metrics import roc_auc_score, accuracy_score, precision_score
 
 def evaluate_model(cfg, model, data_loader, loss_criterion, epoch=-1):
     loss_fn = loss_criterion
@@ -156,10 +148,10 @@ for i, (train_index, test_index) in enumerate(sgkf.split(train_data["image"].val
 
 def create_model():
     model = timm.create_model(CFG.model_name, num_classes=NUM_CLASSES, pretrained=True)
-
     # freeze the initial layers
     freeze_initial_layers(model, freeze_up_to_layer=CFG.frozen_layers)
     return model.to(device)
+
 
 for FOLD in CFG.train_folds:
     seed_everything(CFG.seed)
