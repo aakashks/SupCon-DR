@@ -18,20 +18,6 @@ from torch import nn
 from PIL import Image
 import torch.nn.functional as F
 
-class SupConModel(nn.Module):
-    def __init__(self, encoder, input_dim=2048, output_dim=128):        # assuming either resnet50 or resnet101 is used
-        super().__init__()
-        self.encoder = encoder
-        self.head = nn.Sequential(
-            nn.Linear(input_dim, 512),
-            nn.ReLU(inplace=True),
-            nn.Linear(512, output_dim)
-        )
-    
-    def forward(self, x):
-        ft = self.encoder(x)
-        return F.normalize(self.head(ft), dim=1)
-
 
 class ImageTrainDataset(Dataset):
     def __init__(
@@ -54,9 +40,32 @@ class ImageTrainDataset(Dataset):
         label = d.level
 
         return image, torch.tensor(label, dtype=torch.long)
+    
+    
+class ContrastiveLearningDataset(Dataset):
+    def __init__(self, folder, data, transform=None):
+        self.folder = folder
+        self.data = data
+        self.transform = transform
 
+    def __len__(self):
+        return len(self.data)
 
-def plot_tsne(embeddings, labels):
+    def __getitem__(self, idx):
+        img_name = f"{self.folder}{self.data.loc[idx, 'image']}.jpeg"
+        label = self.data.loc[idx, 'level']
+        image = Image.open(img_name).convert('RGB')
+
+        if self.transform is not None:
+            xi = self.transform(image)
+            xj = self.transform(image)  # Apply the same transform twice
+        else:
+            xi = xj = image
+
+        return [xi, xj], torch.tensor(label, dtype=torch.long)
+
+    
+def plot_tsne(embeddings, labels, name='tsne.png'):
     # Apply t-SNE to the embeddings
     tsne = TSNE(n_components=2, verbose=1, perplexity=40, n_iter=300)
     tsne_results = tsne.fit_transform(embeddings.numpy())
@@ -80,7 +89,8 @@ def plot_tsne(embeddings, labels):
     plt.ylabel('t-SNE Axis 2')
     fg = wandb.Image(fig)
     wandb.log({"t-SNE": fg})
-    plt.savefig(os.path.join(wandb.run.dir, f"tsne.png"), dpi=300, bbox_inches='tight')
+    plt.savefig(os.path.join(wandb.run.dir, name), dpi=300, bbox_inches='tight')
+
 
 
 
@@ -90,7 +100,15 @@ class style:
     YELLOW = '\033[93m'
     END = '\033[0m'
     BOLD = '\033[1m'
+    
+    
+import gc
+import ctypes
 
+def clean_memory():
+    gc.collect()
+    ctypes.CDLL("libc.so.6").malloc_trim(0)
+    torch.cuda.empty_cache()
 
 def seed_everything(seed=42):
     random.seed(seed)
@@ -111,53 +129,3 @@ def freeze_initial_layers(model, freeze_up_to_layer=3):
             print(f'Layer {name} has been frozen.')
         else:
             print(f'Layer {name} is trainable.')
-
-
-
-# class CustomTransform:
-#     def __init__(self, output_size=(CFG.resolution, CFG.resolution), radius_factor=0.9):
-#         self.output_size = output_size
-#         self.radius_factor = radius_factor
-#
-#     def __call__(self, img):
-#         # Assuming img is a PIL Image
-#         # Normalize and preprocess as previously defined
-#         img = func.resize(img, int(min(img.size) / self.radius_factor))
-#         img_tensor = func.to_tensor(img)
-#         mean, std = img_tensor.mean([1, 2]), img_tensor.std([1, 2])
-#         img_normalized = func.normalize(img_tensor, mean.tolist(), std.tolist())
-#         kernel_size = 15
-#         padding = kernel_size // 2
-#         avg_pool = torch.nn.AvgPool2d(kernel_size, stride=1, padding=padding)
-#         local_avg = avg_pool(img_normalized.unsqueeze(0)).squeeze(0)
-#         img_subtracted = img_normalized - local_avg
-#         center_crop_size = int(min(img_subtracted.shape[1:]) * self.radius_factor)
-#         img_cropped = func.center_crop(img_subtracted, [center_crop_size, center_crop_size])
-#
-#         # Apply augmentations
-#         img_resized = func.resize(img_cropped, self.output_size)
-#
-#         return img_resized
-#
-#
-# class ImageTrainDataset(Dataset):
-#     def __init__(
-#             self,
-#             folder,
-#             data,
-#             transforms,
-#     ):
-#         self.folder = folder
-#         self.data = data
-#         self.transforms = transforms
-#
-#     def __len__(self):
-#         return len(self.data)
-#
-#     def __getitem__(self, index):
-#         d = self.data.loc[index]
-#         image = Image.open(f"{self.folder}{d.image}.jpeg")
-#         image = self.transforms(image)
-#         label = d.level
-#
-#         return image, torch.tensor(label, dtype=torch.long)
