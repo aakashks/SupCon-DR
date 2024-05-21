@@ -7,8 +7,6 @@ run = wandb.init(
         k: v for k, v in CFG.__dict__.items() if not k.startswith('__')}
 )
 
-device = torch.device(CFG.device)
-
 # train_data = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels.csv'))
 train_data = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels_cropped.csv')).sample(frac=1).reset_index(drop=True)
 
@@ -18,12 +16,6 @@ train_data = train_data[train_data.image.isin(lst)]
 
 # take only few samples from each class
 train_data = train_data.groupby('level').head(CFG.samples_per_class).reset_index(drop=True)
-
-# # visualize the transformations
-# train_dataset = ImageTrainDataset(TRAIN_DATA_FOLDER, train_data, train_transforms)
-# image, label = train_dataset[11]
-# transformed_img_pil = func.to_pil_image(image)
-# plt.imshow(transformed_img_pil)
 
 
 def evaluate_model(cfg, model, data_loader, loss_criterion, epoch=-1):

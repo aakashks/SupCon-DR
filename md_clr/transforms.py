@@ -30,8 +30,6 @@ class CustomTransform:
         return img_resized
 
 
-# train_transforms = CustomTransform()
-
 train_transforms = v2.Compose([
     v2.GaussianBlur(kernel_size=(5, 5), sigma=(0.1, 2)),
     v2.RandomRotation(degrees=(0, 90)),

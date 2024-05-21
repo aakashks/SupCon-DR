@@ -8,8 +8,6 @@ run = wandb.init(
         k: v for k, v in CFG.__dict__.items() if not k.startswith('__')}
 )
 
-device = torch.device(CFG.device)
-
 # train_data = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels.csv'))
 train_data = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels_cropped.csv')).sample(frac=1).reset_index(drop=True)
 

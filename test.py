@@ -12,8 +12,6 @@ run = wandb.init(
         k: v for k, v in CFG.__dict__.items() if not k.startswith('__')}
 )
 
-device = torch.device(CFG.device)
-
 # train_data = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels.csv'))
 train_data = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels_cropped.csv')).sample(frac=1).reset_index(drop=True)
 
@@ -147,38 +145,6 @@ def create_model():
     # freeze the initial layers
     freeze_initial_layers(model, freeze_up_to_layer=CFG.frozen_layers)
     return model.to(device)
-
-
-from sklearn.manifold import TSNE
-import matplotlib.colors as mcolors
-
-
-
-def plot_tsne(embeddings, labels):
-    # Apply t-SNE to the embeddings
-    tsne = TSNE(n_components=2, verbose=1, perplexity=40, n_iter=300)
-    tsne_results = tsne.fit_transform(embeddings.numpy())
-
-    # Define the number of unique labels/classes
-    num_classes = len(np.unique(labels.numpy()))
-    # Create a custom color map with specific color transitions
-    colors = ['blue', 'green', 'yellow', 'orange', 'red']
-    cmap = mcolors.LinearSegmentedColormap.from_list("Custom", colors, N=num_classes)
-
-    # Create a boundary norm with boundaries and colors
-    norm = mcolors.BoundaryNorm(np.arange(-0.5, num_classes + 0.5, 1), cmap.N)
-
-    fig = plt.figure(figsize=(10, 8))
-    scatter = plt.scatter(tsne_results[:, 0], tsne_results[:, 1], c=labels, cmap=cmap, norm=norm, alpha=0.5)
-    colorbar = plt.colorbar(scatter, ticks=np.arange(num_classes))
-    colorbar.set_label('Severity Level')
-    colorbar.set_ticklabels(np.arange(num_classes))  # Set discrete labels if needed
-    plt.title('t-SNE of Image Embeddings with Discrete Severity Levels')
-    plt.xlabel('t-SNE Axis 1')
-    plt.ylabel('t-SNE Axis 2')
-    fg = wandb.Image(fig)
-    wandb.log({"t-SNE": fg})
-    plt.savefig(os.path.join(wandb.run.dir, f"tsne.png"), dpi=300, bbox_inches='tight')
 
 
 for FOLD in CFG.train_folds:

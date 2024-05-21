@@ -12,8 +12,6 @@ run = wandb.init(
 
 clean_memory()
 
-device = torch.device(CFG.device)
-
 # # Load train data
 
 # train_data = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels.csv'))

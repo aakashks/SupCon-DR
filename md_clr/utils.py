@@ -124,7 +124,6 @@ def plot_tsne(embeddings, labels, name='tsne.png'):
 
 
 
-
 class style:
     BLUE = '\033[94m'
     GREEN = '\033[92m'

@@ -19,8 +19,9 @@ class SupConModel(nn.Module):
 
 
 class SupConLoss(nn.Module):
-    """Supervised Contrastive Learning: https://arxiv.org/pdf/2004.11362.pdf.
-    It also supports the unsupervised contrastive loss in SimCLR"""
+    """Supervised Contrastive Learning: as implemented in https://github.com/HobbitLong/SupContrast/blob/master/losses.py
+        according to the paper: https://arxiv.org/pdf/2004.11362.pdf.
+        It also supports the unsupervised contrastive loss in SimCLR"""
     def __init__(self, temperature=0.07, contrast_mode='all',
                  base_temperature=0.07):
         super().__init__()
