@@ -1,31 +1,22 @@
-import torch
-from torch.utils.data import Dataset
-
-import random
 import os
-import numpy as np
+import random
 
-from sklearn.manifold import TSNE
 import matplotlib.colors as mcolors
-
-from sklearn.metrics import roc_auc_score, accuracy_score, precision_score
-
-from tqdm import tqdm
 import matplotlib.pyplot as plt
+import numpy as np
+import torch
 import wandb
+from sklearn.manifold import TSNE
+from torch.utils.data import Dataset
+from tqdm import tqdm
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-from torch import nn
 
 import pandas as pd
-from torch.utils.data import DataLoader
-
-import timm
 
 from PIL import Image
-import torch.nn.functional as F
 
-from config import *
+from .config import *
 
 
 class ImageTrainDataset(Dataset):
@@ -49,8 +40,8 @@ class ImageTrainDataset(Dataset):
         label = d.level
 
         return image, torch.tensor(label, dtype=torch.long)
-    
-    
+
+
 class ContrastiveLearningDataset(Dataset):
     def __init__(self, folder, data, transform=None):
         self.folder = folder
@@ -125,22 +116,23 @@ def plot_tsne(embeddings, labels, name='tsne.png'):
     plt.savefig(os.path.join(wandb.run.dir, name), dpi=300, bbox_inches='tight')
 
 
-
 class style:
     BLUE = '\033[94m'
     GREEN = '\033[92m'
     YELLOW = '\033[93m'
     END = '\033[0m'
     BOLD = '\033[1m'
-    
-    
+
+
 import gc
 import ctypes
+
 
 def clean_memory():
     gc.collect()
     ctypes.CDLL("libc.so.6").malloc_trim(0)
     torch.cuda.empty_cache()
+
 
 def seed_everything(seed=42):
     random.seed(seed)

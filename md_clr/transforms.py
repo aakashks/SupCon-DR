@@ -1,7 +1,7 @@
 from torchvision.transforms import functional as func
 import torchvision.transforms as v2
 import torch
-from config import CFG
+from .config import CFG
 
 
 class CustomTransform:
