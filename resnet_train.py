@@ -7,15 +7,7 @@ run = wandb.init(
         k: v for k, v in CFG.__dict__.items() if not k.startswith('__')}
 )
 
-# train_data = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels.csv'))
-train_data = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels_cropped.csv')).sample(frac=1).reset_index(drop=True)
-
-# remove all images from the csv if they are not in the folder
-lst = map(lambda x: x[:-5], os.listdir(TRAIN_DATA_FOLDER))
-train_data = train_data[train_data.image.isin(lst)]
-
-# take only few samples from each class
-train_data = train_data.groupby('level').head(CFG.samples_per_class).reset_index(drop=True)
+train_data = get_train_data()
 
 
 def evaluate_model(cfg, model, data_loader, loss_criterion, epoch=-1):

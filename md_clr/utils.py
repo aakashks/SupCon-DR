@@ -25,6 +25,8 @@ import timm
 from PIL import Image
 import torch.nn.functional as F
 
+from config import *
+
 
 class ImageTrainDataset(Dataset):
     def __init__(
@@ -159,3 +161,17 @@ def freeze_initial_layers(model, freeze_up_to_layer=3):
             print(f'Layer {name} has been frozen.')
         else:
             print(f'Layer {name} is trainable.')
+
+
+def get_train_data():
+    # train_data = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels.csv'))
+    train_data = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels_cropped.csv')).sample(frac=1).reset_index(drop=True)
+
+    # remove all images from the csv if they are not in the folder
+    lst = map(lambda x: x[:-5], os.listdir(TRAIN_DATA_FOLDER))
+    train_data = train_data[train_data.image.isin(lst)]
+
+    # take only few samples from each class
+    train_data = train_data.groupby('level').head(CFG.samples_per_class).reset_index(drop=True)
+
+    return train_data
