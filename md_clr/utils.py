@@ -13,7 +13,6 @@ from tqdm import tqdm
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 import pandas as pd
-
 from PIL import Image
 
 from .config import *

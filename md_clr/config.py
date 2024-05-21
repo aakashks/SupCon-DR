@@ -3,7 +3,7 @@ import torch
 NUM_CLASSES = 5
 
 MAIN_FOLDER = "./"
-OUTPUT_FOLDER = MAIN_FOLDER + "md-clr-output/"
+OUTPUT_FOLDER = MAIN_FOLDER + "output/"
 DATA_FOLDER = MAIN_FOLDER + "data/diabetic-retinopathy/"
 TRAIN_DATA_FOLDER = DATA_FOLDER + 'resized_train_c/'
 TEST_DATA_FOLDER = DATA_FOLDER + 'test/'
@@ -17,7 +17,7 @@ class CFG:
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     apex = True  # use half precision
-    workers = 16
+    workers = 4
 
     model_name = "resnet50.a1_in1k"
     epochs = 20

@@ -1,3 +1,6 @@
+import timm
+from torch.utils.data import DataLoader
+
 from md_clr import *
 from md_clr.supcon import *
 
@@ -8,13 +11,7 @@ run = wandb.init(
         k: v for k, v in CFG.__dict__.items() if not k.startswith('__')}
 )
 
-get_train_data()
-
-# # visualize the transformations
-# train_dataset = ImageTrainDataset(TRAIN_DATA_FOLDER, train_data, train_transforms)
-# image, label = train_dataset[11]
-# transformed_img_pil = func.to_pil_image(image)
-# plt.imshow(transformed_img_pil)
+train_data = get_train_data()
 
 from sklearn.metrics import roc_auc_score, accuracy_score, precision_score
 

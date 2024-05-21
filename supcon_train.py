@@ -7,27 +7,19 @@ from md_clr.supcon import SupConModel, SupConLoss
 CFG.cl_method = 'SimCLR'
 
 run = wandb.init(
-    project="aml", 
+    project="aml",
     dir=OUTPUT_FOLDER,
     config={
-    k:v for k, v in CFG.__dict__.items() if not k.startswith('__')}
+        k: v for k, v in CFG.__dict__.items() if not k.startswith('__')}
 )
 
 clean_memory()
 
 # # Load train data
-
-# train_data = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels.csv'))
-train_data = pd.read_csv(os.path.join(DATA_FOLDER, 'trainLabels_cropped.csv')).sample(frac=1).reset_index(drop=True)
+train_data = get_train_data()
 
 
-# remove all images from the csv if they are not in the folder
-lst = map(lambda x: x[:-5], os.listdir(TRAIN_DATA_FOLDER))
-train_data = train_data[train_data.image.isin(lst)]
-# take only 100 samples from each class
-train_data = train_data.groupby('level').head(CFG.samples_per_class).reset_index(drop=True)
-
-def train_epoch(cfg, train_loader, model, criterion, device, optimizer, scheduler, epoch):  
+def train_epoch(cfg, train_loader, model, criterion, device, optimizer, scheduler, epoch):
     model.train()
 
     train_loss = 0
@@ -37,29 +29,29 @@ def train_epoch(cfg, train_loader, model, criterion, device, optimizer, schedule
 
     for step, (images, labels) in tk0:
         images = torch.cat([images[0], images[1]], dim=0)
-        
+
         images = images.to(device)
         labels = labels.to(device)
-        
+
         optimizer.zero_grad()
-        
+
         bsz = labels.shape[0]
-        
+
         # compute loss
         features = model(images)
         f1, f2 = torch.split(features, [bsz, bsz], dim=0)
         features = torch.cat([f1.unsqueeze(1), f2.unsqueeze(1)], dim=1)
-        
+
         if CFG.cl_method == 'SupCon':
             loss = criterion(features, labels)
         elif CFG.cl_method == 'SimCLR':
             loss = criterion(features)
         else:
             raise ValueError(f"Unknown contrastive learning method: {CFG.cl_method}")
-        
+
         loss.backward()
         optimizer.step()
-        
+
         train_loss += loss.item()
 
         # Update learning rate scheduler if present
@@ -68,8 +60,9 @@ def train_epoch(cfg, train_loader, model, criterion, device, optimizer, schedule
             lr = scheduler.get_last_lr()[0]
         else:
             lr = optimizer.param_groups[0]['lr']
-        
-        tk0.set_description(f"Epoch {epoch} training {step+1}/{total_len} [LR {lr:0.6f}] - loss: {train_loss/(step+1):.4f}")
+
+        tk0.set_description(
+            f"Epoch {epoch} training {step + 1}/{total_len} [LR {lr:0.6f}] - loss: {train_loss / (step + 1):.4f}")
         learning_rate_history.append(lr)
 
     train_loss /= total_len
@@ -82,6 +75,7 @@ def create_model():
     model = timm.create_model(CFG.model_name, num_classes=0, pretrained=True)
     freeze_initial_layers(model, freeze_up_to_layer=CFG.frozen_layers)
     return model.to(device)
+
 
 ## Train folds
 
@@ -103,7 +97,7 @@ train_loader = DataLoader(
 resnet = create_model()
 model = SupConModel(resnet).to(device)
 optimizer = torch.optim.AdamW(model.parameters(), lr=CFG.lr, weight_decay=CFG.weight_decay)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, eta_min=1e-6, T_max =CFG.epochs * len(train_loader))
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, eta_min=1e-6, T_max=CFG.epochs * len(train_loader))
 
 criterion = SupConLoss()
 
@@ -111,7 +105,7 @@ for epoch in range(CFG.epochs):
     train_loss, train_lr = train_epoch(CFG, train_loader, model, criterion, device, optimizer, scheduler, epoch)
     scheduler.step()  # Update the learning rate scheduler at the end of each epoch
 
-    if (epoch+1) % 3 == 0:
+    if (epoch + 1) % 3 == 0:
         torch.save(model.state_dict(), os.path.join(wandb.run.dir, f'ckpt_epoch_{epoch}.pth'))
 
         # plot a tsne plot of all the images using embeddings from the model
@@ -128,6 +122,4 @@ for epoch in range(CFG.epochs):
         features, targets = get_embeddings(model, loader)
         plot_tsne(features, targets, f'tsne_{epoch}.png')
 
-
 wandb.finish()
-
