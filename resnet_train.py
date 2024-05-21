@@ -1,4 +1,4 @@
-from med_sclr import *
+from md_clr import *
 
 run = wandb.init(
     project="aml",

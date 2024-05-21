@@ -1,5 +1,5 @@
-from med_sclr import *
-from med_sclr.supcon import SupConModel, SupConLoss
+from md_clr import *
+from md_clr.supcon import SupConModel, SupConLoss
 
 CFG.cl_method = 'SimCLR'
 
