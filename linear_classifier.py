@@ -1,8 +1,8 @@
 import timm
 from torch.utils.data import DataLoader
 
-from md_clr import *
-from md_clr.supcon import *
+from src import *
+from src.supcon import *
 
 run = wandb.init(
     project="hello-world",

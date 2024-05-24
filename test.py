@@ -1,4 +1,4 @@
-from md_clr import *
+from src import *
 import pandas as pd
 import timm
 from torch.utils.data import DataLoader

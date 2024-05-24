@@ -1,8 +1,8 @@
 import timm
 from torch.utils.data import DataLoader
 
-from md_clr import *
-from md_clr.supcon import SupConModel, SupConLoss
+from src import *
+from src.supcon import SupConModel, SupConLoss
 
 CFG.cl_method = 'SimCLR'
 

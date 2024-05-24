@@ -4,7 +4,7 @@ from sklearn.metrics import roc_auc_score, accuracy_score, precision_score
 from torch import nn
 from torch.utils.data import DataLoader
 
-from md_clr import *
+from src import *
 
 run = wandb.init(
     project="aml",

@@ -1,6 +1,6 @@
 ```python
-from md_clr import *
-from md_clr.supcon import *
+from src import *
+from src.supcon import *
 
 import seaborn as sns
 ```
