@@ -34,8 +34,9 @@ class CFG:
     workers = 16
 
     model_name = "resnet50.a1_in1k"
-    epochs = 5
+    epochs = 20
     cropped = True
+    train_ratio = 0.6
     # weights =  torch.tensor([0.206119, 0.793881],dtype=torch.float32)
 
     clip_val = 1000.
@@ -257,7 +258,7 @@ from torchvision.datasets import ImageFolder
 # we have to train and evaluate the linear classifier on the embeddings to see which embeddings are better
 test_data = ImageFolder(TEST_DATA_FOLDER, transform=val_transforms)
 
-train_ratio = 0.75
+train_ratio = CFG.train_ratio
 train_size = int(train_ratio * len(test_data))
 val_size = len(test_data) - train_size
 
